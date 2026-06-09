@@ -1,0 +1,28 @@
+env                = "dev"
+project            = "fintwit-rag"
+terraform_role_arn = "arn:aws:iam::<TU_ACCOUNT_ID>:role/TerraformExecutionRole"
+region             = "us-east-1"
+profile            = "default"
+
+# Jina API para Embeddings y Reranking
+jina_api_key       = "jina_AQUI_TU_API_KEY_SECRETA"
+jina_embed_url     = "https://api.jina.ai/v1/embeddings"
+jina_rerank_url    = "https://api.jina.ai/v1/rerank"
+jina_embed_model   = "jina-embeddings-v5-text-nano"
+jina_rerank_model  = "jina-reranker-v3"
+
+# Qdrant Database
+qdrant_domain_name = "qdrant.tudominio.com"
+qdrant_api_key     = "AQUI_TU_QDRANT_API_KEY_SECRETA"
+collection_name    = "tweets"
+
+# LLM Provider
+llm_provider       = "openai"
+openai_api_key     = "sk-proj-AQUI_TU_OPENAI_API_KEY_SECRETA"
+openai_model       = "gpt-5.4"
+
+# DNS / Route 53
+hosted_zone_name   = "tudominio.com"
+route53_role_arn   = "arn:aws:iam::<TU_ACCOUNT_ID>:role/SharedRoute53Role"
+
+apigw_domain_name  = "api.tudominio.com"

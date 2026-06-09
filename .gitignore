@@ -1,0 +1,42 @@
+# Entornos y Secretos
+.env
+*.tfvars
+!*.tfvars.example
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+backend.conf
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+env/
+.venv/
+
+# Paquetes generados por Lambda
+**/layer.zip
+**/lambda.zip
+lambda/tmp/
+lambda/wheelhouse/
+
+# Jupyter / VSCode / MacOS
+.ipynb_checkpoints/
+.vscode/
+.DS_Store

@@ -1,0 +1,7 @@
+bucket  = "tu-bucket-tfstate"
+region  = "us-east-1"
+profile = "default"
+encrypt = true
+assume_role = {
+  role_arn = "arn:aws:iam::<TU_ACCOUNT_ID>:role/TerraformStateAccessRole"
+}
