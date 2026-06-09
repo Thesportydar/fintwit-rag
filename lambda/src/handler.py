@@ -1,6 +1,7 @@
 import json
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
@@ -12,10 +13,13 @@ from .vector_store import QdrantStoreConfig, QdrantTweetVectorStore, SearchResul
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-SYSTEM_PROMPT = """Sos un asistente especializado en el análisis de la comunidad financiera argentina en Twitter (fintwit).
-Se te proporcionan tweets relevantes como contexto para responder.
-Respondé en español, de manera clara y concisa.
-Basate únicamente en el contexto provisto. Si no hay suficiente información, indicalo sin inventar datos."""
+PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+with open(PROMPTS_DIR / "system_prompt.txt", "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read().strip()
+
+with open(PROMPTS_DIR / "user_prompt.txt", "r", encoding="utf-8") as f:
+    USER_PROMPT_TEMPLATE = f.read().strip()
 
 
 @dataclass(frozen=True)
@@ -122,7 +126,7 @@ def lambda_handler(event, context):
         top_points = [results.points[i] for i in ranked_indices]
 
         context_str = format_context(top_points)
-        user_prompt = f"Contexto:\n{context_str}\n\nPregunta: {search_request.query}"
+        user_prompt = USER_PROMPT_TEMPLATE.format(context=context_str, query=search_request.query)
         answer = llm.complete(system=SYSTEM_PROMPT, user=user_prompt)
 
         sources = [

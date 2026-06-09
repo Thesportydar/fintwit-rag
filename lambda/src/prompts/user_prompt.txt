@@ -1,0 +1,7 @@
+Tweets recuperados ({len(top_points)}), ordenados por relevancia:
+
+{context}
+
+---
+
+Consulta: {query}
