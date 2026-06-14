@@ -1,0 +1,48 @@
+name: Deploy Website to AWS
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'ui/**'
+      - '.github/workflows/deploy-front.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "${{ secrets.AWS_ROLE_ARN }}"
+          aws-region: "${{ vars.AWS_REGION }}"
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install modules
+        run: pnpm install
+      
+      - name: Build application
+        run: pnpm run build
+      
+      - name: Deploy to S3
+        run: aws s3 sync --delete --size-only ./dist/ s3://${{ vars.S3_BUCKET_NAME }}/
+      
+      - name: Create CloudFront invalidation
+        run: aws cloudfront create-invalidation --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
