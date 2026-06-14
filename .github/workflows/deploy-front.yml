@@ -44,7 +44,7 @@ jobs:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
       
       - name: Deploy to S3
-        run: aws s3 sync --delete --size-only ./dist/ s3://${{ vars.S3_BUCKET_NAME }}/
+        run: aws s3 sync --delete ./dist/ s3://${{ vars.S3_BUCKET_NAME }}/
       
       - name: Create CloudFront invalidation
         run: aws cloudfront create-invalidation --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
