@@ -1,6 +1,13 @@
 resource "aws_apigatewayv2_api" "rag_api" {
   name          = local.api_name
   protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["POST", "OPTIONS"]
+    allow_headers = ["content-type", "authorization"]
+    max_age       = 300
+  }
 }
 
 resource "aws_apigatewayv2_integration" "rag_lambda" {

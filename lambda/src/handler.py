@@ -1,156 +1,117 @@
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
-import requests
+from langchain.agents import create_agent
+from langchain.agents.middleware import ModelRetryMiddleware, SummarizationMiddleware, ToolRetryMiddleware
+from langgraph_checkpoint_aws import DynamoDBSaver
+from langgraph_checkpoint_aws.store.dynamodb import DynamoDBStore
+from qdrant_client import QdrantClient
 
 from .config import AppConfig
-from .embeddings import JinaEmbeddingConfig, JinaEmbeddingProvider
+from .embeddings import JinaEmbeddings, JinaRerankCompressor
 from .llm import get_llm
-from .vector_store import QdrantStoreConfig, QdrantTweetVectorStore, SearchResult, TweetFilters, TweetHit
+from .vector_store import create_search_tweets_tool
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-
-with open(PROMPTS_DIR / "system_prompt.txt", "r", encoding="utf-8") as f:
+with open(PROMPTS_DIR / "system_prompt.txt", encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read().strip()
 
-with open(PROMPTS_DIR / "user_prompt.txt", "r", encoding="utf-8") as f:
-    USER_PROMPT_TEMPLATE = f.read().strip()
-
-
-@dataclass(frozen=True)
-class SearchRequest:
-    query: str
-    filters: TweetFilters
-    retrieve_limit: int = 20
-    top_n: int = 5
-
-    @classmethod
-    def from_body(cls, body: dict) -> "SearchRequest":
-        if not isinstance(body, dict):
-            raise ValueError("El body debe ser un objeto JSON")
-
-        query = str(body.get("query", "")).strip()
-        if not query:
-            raise ValueError("El campo 'query' es requerido")
-
-        try:
-            retrieve_limit = int(body.get("retrieve_limit", 20))
-            top_n = int(body.get("top_n", 5))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("retrieve_limit y top_n deben ser números enteros") from exc
-
-        if retrieve_limit < 1 or top_n < 1:
-            raise ValueError("retrieve_limit y top_n deben ser mayores que 0")
-
-        return cls(
-            query=query,
-            filters=TweetFilters.from_dict(body.get("filters")),
-            retrieve_limit=retrieve_limit,
-            top_n=top_n,
-        )
-
-
 app_config = AppConfig.from_env()
-embedding_provider = JinaEmbeddingProvider(
-    JinaEmbeddingConfig(
-        api_key=app_config.jina_api_key,
-        embed_url=app_config.jina_embed_url,
-        rerank_url=app_config.jina_rerank_url,
-        embed_model=app_config.jina_embed_model,
-        rerank_model=app_config.jina_rerank_model,
-    )
-)
-vector_store = QdrantTweetVectorStore(
-    QdrantStoreConfig(
-        url=app_config.qdrant_url,
-        api_key=app_config.qdrant_api_key,
-        collection_name=app_config.collection_name,
-    )
-)
-llm = get_llm(app_config.llm_provider)
 
+embeddings = JinaEmbeddings(
+    api_key=app_config.jina_api_key,
+    url=app_config.jina_embed_url,
+    model=app_config.jina_embed_model,
+)
 
-def format_context(points: list[TweetHit]) -> str:
-    blocks = []
-    for p in points:
-        pl = p.payload
-        timestamp = pl.get("tweet_timestamp") or ""
-        date = timestamp[:10]
-        handle = pl.get("user_handle", "")
-        content = pl.get("content", "")
-        blocks.append(
-            "\n".join(
-                [
-                    "<<< TWEET >>>",
-                    f"fecha: {date}",
-                    f"autor: @{handle}",
-                    f"contenido: {content}",
-                    "<<< /TWEET >>>",
-                ]
-            )
-        )
-    return "\n\n".join(blocks)
+reranker = JinaRerankCompressor(
+    api_key=app_config.jina_api_key,
+    url=app_config.jina_rerank_url,
+    model=app_config.jina_rerank_model,
+    top_n=app_config.reranker_top_n,
+)
+
+qdrant_client = QdrantClient(
+    url=app_config.qdrant_url,
+    api_key=app_config.qdrant_api_key,
+)
+
+search_tweets_tool = create_search_tweets_tool(
+    qdrant_client=qdrant_client,
+    collection_name=app_config.collection_name,
+    embeddings=embeddings,
+    compressor=reranker,
+    k=app_config.retriever_k,
+)
+
+llm = get_llm(
+    provider=app_config.llm_provider,
+    temperature=app_config.llm_temperature,
+    max_tokens=app_config.llm_max_tokens,
+)
+
+checkpointer = DynamoDBSaver(table_name=app_config.dynamodb_checkpoint_table)
+
+store = DynamoDBStore(table_name=app_config.dynamodb_store_table)
+
+agent = create_agent(
+    model=llm,
+    tools=[search_tweets_tool],
+    checkpointer=checkpointer,
+    store=store,
+    middleware=[
+        ModelRetryMiddleware(
+            max_retries=3,
+            backoff_factor=2.0,
+            initial_delay=1.0,
+        ),
+        ToolRetryMiddleware(
+            max_retries=3,
+            backoff_factor=2.0,
+            initial_delay=1.0,
+        ),
+        SummarizationMiddleware(
+            model=llm,
+            trigger=("tokens", app_config.memory_token_limit),
+            keep=("messages", app_config.memory_keep_messages),
+        ),
+    ],
+    system_prompt=SYSTEM_PROMPT,
+)
 
 
 def lambda_handler(event, context):
     try:
         body = json.loads(event.get("body") or "{}")
-        search_request = SearchRequest.from_body(body)
 
-        logger.info(
-            "Query: '%s' | Filters: %s | retrieve=%s top_n=%s",
-            search_request.query,
-            search_request.filters,
-            search_request.retrieve_limit,
-            search_request.top_n,
-        )
+        messages = body.get("messages", [])
+        if not messages:
+            return _response(400, {"error": "El campo 'messages' es requerido en el body."})
 
-        query_vector = embedding_provider.embed_query(search_request.query)
+        thread_id = body.get("thread_id", "default_thread")
+        config = {"configurable": {"thread_id": thread_id}}
 
-        results: SearchResult = vector_store.query(
-            query_vector=query_vector,
-            limit=search_request.retrieve_limit,
-            filters=search_request.filters,
-        )
+        result = agent.invoke({"messages": messages}, config=config)
 
-        if not results.points:
-            return _response(200, {"answer": "No encontré tweets relevantes para tu consulta.", "sources": []})
-
-        docs = [point.content for point in results.points]
-        ranked_indices = embedding_provider.rerank(search_request.query, docs, top_n=search_request.top_n)
-        top_points = [results.points[i] for i in ranked_indices]
-
-        context_str = format_context(top_points)
-        user_prompt = USER_PROMPT_TEMPLATE.format(context=context_str, query=search_request.query)
-        answer = llm.complete(system=SYSTEM_PROMPT, user=user_prompt)
-
-        sources = [
-            {
-                "url": p.payload.get("url"),
-                "handle": p.payload.get("user_handle"),
-                "date": p.payload.get("tweet_timestamp", "")[:10],
-                "content": p.payload.get("content"),
+        response_messages = []
+        for m in result.get("messages", []):
+            msg_dict = {
+                "role": m.type,
+                "content": m.content,
             }
-            for p in top_points
-        ]
+            if hasattr(m, "tool_calls") and m.tool_calls:
+                msg_dict["tool_calls"] = m.tool_calls
+            response_messages.append(msg_dict)
 
-        return _response(200, {"answer": answer, "sources": sources})
+        return _response(200, {"messages": response_messages})
 
-    except ValueError as exc:
-        return _response(400, {"error": str(exc)})
-
-    except requests.RequestException as exc:
-        logger.error("Jina API error: %s", str(exc))
-        return _response(502, {"error": "Error de conexión o HTTP llamando a Jina API"})
-
-    except Exception:
+    except Exception as exc:
         logger.error("Unhandled error", exc_info=True)
-        return _response(500, {"error": "Internal server error"})
+        return _response(500, {"error": str(exc)})
 
 
 def _response(status: int, body: dict) -> dict:

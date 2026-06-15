@@ -164,7 +164,7 @@ export function Claude({
 
         {/* Search Filters Section */}
         <div className="border-t border-[#6c6a6040] bg-[#1a1a18]/60 p-4 space-y-3">
-          <button 
+          <button
             onClick={() => setFiltersOpen(!filtersOpen)}
             className="w-full flex items-center justify-between text-xs uppercase font-bold tracking-widest text-[#9a9893] hover:text-[#eee] transition"
           >
@@ -174,7 +174,7 @@ export function Claude({
             </div>
             {filtersOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
           </button>
-          
+
           {filtersOpen && (
             <div className="space-y-3 pt-2">
               <div className="space-y-2.5">
@@ -190,7 +190,7 @@ export function Claude({
                     className="w-full text-xs rounded-lg border border-[#6c6a6040] bg-[#2b2a27] text-[#eee] px-2.5 py-1.5 outline-none focus:border-[#ae5630] transition color-scheme-dark"
                   />
                 </div>
-                
+
                 <div>
                   <label className="flex items-center gap-1 text-[10px] text-[#9a9893] mb-1 font-medium">
                     <Calendar size={10} />
@@ -259,7 +259,7 @@ export function Claude({
                     Fintwit RAG Bot
                   </h1>
                   <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#6b6a68] dark:text-[#b8b5a9]">
-                    Explorá y analizá tweets financieros utilizando búsqueda semántica avanzada. 
+                    Explorá y analizá tweets financieros utilizando búsqueda semántica avanzada.
                     Configurá filtros por usuario y rango de fechas en la barra lateral para guiar la respuesta del LLM.
                   </p>
                 </div>

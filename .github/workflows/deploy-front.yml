@@ -23,13 +23,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: "${{ secrets.AWS_ROLE_ARN }}"
           aws-region: "${{ vars.AWS_REGION }}"
-      
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
@@ -37,14 +37,14 @@ jobs:
 
       - name: Install modules
         run: pnpm install
-      
+
       - name: Build application
         run: pnpm run build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-      
+
       - name: Deploy to S3
         run: aws s3 sync --delete ./dist/ s3://${{ vars.S3_BUCKET_NAME }}/
-      
+
       - name: Create CloudFront invalidation
         run: aws cloudfront create-invalidation --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"

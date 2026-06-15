@@ -29,6 +29,7 @@ htmlcov/
 venv/
 env/
 .venv/
+.ruff_cache
 
 # Paquetes generados por Lambda
 **/layer.zip
@@ -40,3 +41,15 @@ lambda/wheelhouse/
 .ipynb_checkpoints/
 .vscode/
 .DS_Store
+AGENTS.md
+
+# ui
+ui/node_modules/
+ui/dist/
+ui/.env
+ui/.env.local
+ui/.env.*.local
+ui/npm-debug.log*
+ui/yarn-debug.log*
+ui/yarn-error.log*
+ui/pnpm-debug.log*

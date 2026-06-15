@@ -23,6 +23,7 @@ data "archive_file" "lambda_package" {
 resource "aws_lambda_layer_version" "rag_layer" {
   layer_name               = "rag_layer"
   filename                 = "${path.module}/../../lambda/layer.zip"
+  source_code_hash         = filebase64sha256("${path.module}/../../lambda/layer.zip")
   description              = "RAG layer"
   compatible_runtimes      = ["python3.13"]
   compatible_architectures = ["x86_64"]
@@ -36,7 +37,8 @@ resource "aws_lambda_function" "rag" {
   source_code_hash = data.archive_file.lambda_package.output_base64sha256
   runtime          = "python3.13"
   architectures    = ["x86_64"]
-  timeout          = 30
+  timeout          = 90
+  memory_size      = 512
 
   layers = [
     aws_lambda_layer_version.rag_layer.arn
@@ -93,6 +95,23 @@ resource "aws_iam_role_policy" "lambda_execution_policy" {
         ]
         Resource = "arn:aws:logs:*:*:*"
       },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_checkpoint_table}",
+          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_store_table}"
+        ]
+      }
     ]
   })
 }

@@ -38,13 +38,13 @@ export function MyAssistant() {
       const params = new URLSearchParams(window.location.search);
       const queryId = params.get("threadId");
       if (queryId) return queryId;
-      
+
       const savedActive = localStorage.getItem("fintwit_rag_active_thread_id");
       if (savedActive) return savedActive;
     } catch (e) {
       console.error("Error reading active thread ID from localStorage:", e);
     }
-    
+
     const newId = generateUUID();
     try {
       localStorage.setItem("fintwit_rag_active_thread_id", newId);
@@ -131,13 +131,13 @@ export function MyAssistant() {
     setThreads((prev) => {
       const exists = prev.some((t) => t.id === id);
       if (exists) return prev;
-      
+
       const newThread: ThreadItem = {
         id,
         title: firstQuery.length > 40 ? firstQuery.substring(0, 37) + "..." : firstQuery,
         updatedAt: new Date().toISOString(),
       };
-      
+
       return [newThread, ...prev];
     });
   }, []);
@@ -150,7 +150,7 @@ export function MyAssistant() {
     } catch (e) {
       console.error("Error removing messages from localStorage for thread:", idToDelete, e);
     }
-    
+
     if (threadId === idToDelete) {
       const nextId = generateUUID();
       setThreadId(nextId);
@@ -225,7 +225,7 @@ export function MyAssistant() {
         role: "user",
         content: [{ type: "text", text: promptText }],
       };
-      
+
       const updatedMessages = [...messages, newUserMsg];
       setMessages(updatedMessages);
       try {
@@ -259,13 +259,13 @@ export function MyAssistant() {
         }
 
         const data = await response.json();
-        
+
         // El frontend es la fuente de verdad. Extraemos solo el último mensaje (la respuesta del Assistant)
         // del array que devuelve la API y lo concatenamos al historial local.
         if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
           const lastApiMsg = data.messages[data.messages.length - 1];
-          const textContent = typeof lastApiMsg.content === "string" 
-            ? lastApiMsg.content 
+          const textContent = typeof lastApiMsg.content === "string"
+            ? lastApiMsg.content
             : JSON.stringify(lastApiMsg.content);
 
           const newAssistantMsg: ThreadMessageLike = {
@@ -276,7 +276,7 @@ export function MyAssistant() {
 
           const finalMessages = [...updatedMessages, newAssistantMsg];
           setMessages(finalMessages);
-          
+
           try {
             localStorage.setItem(`fintwit_rag_messages_${threadId}`, JSON.stringify(finalMessages));
           } catch (e) {

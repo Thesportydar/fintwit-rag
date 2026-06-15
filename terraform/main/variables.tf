@@ -68,6 +68,18 @@ variable "bedrock_model_id" {
   default     = "anthropic.claude-3-5-haiku-20241022-v1:0"
 }
 
+variable "dynamodb_checkpoint_table" {
+  description = "Name of the DynamoDB table for LangGraph checkpoints"
+  type        = string
+  default     = "fintwit-checkpoints"
+}
+
+variable "dynamodb_store_table" {
+  description = "Name of the DynamoDB table for LangGraph store"
+  type        = string
+  default     = "fintwit-store"
+}
+
 variable "jina_embed_url" {
   description = "Jina embeddings endpoint"
   type        = string

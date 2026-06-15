@@ -13,6 +13,8 @@ docker run --rm \
   public.ecr.aws/sam/build-python3.13 \
   bash -c "
     pip install --no-cache-dir --requirement requirements.txt --target python/
+    rm -rf python/boto3* python/botocore* python/s3transfer*
+    find python/ -type d -name '__pycache__' -exec rm -rf {} +
   "
 
 zip -r layer.zip python
