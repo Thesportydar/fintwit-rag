@@ -77,3 +77,23 @@ output "agentcore_runtime_arn" {
   value       = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
   description = "The Bedrock AgentCore Agent Runtime ARN"
 }
+
+output "cognito_user_pool_id" {
+  value       = aws_cognito_user_pool.pool.id
+  description = "ID of the Amazon Cognito User Pool"
+}
+
+output "cognito_client_id" {
+  value       = aws_cognito_user_pool_client.client.id
+  description = "ID of the Amazon Cognito User Pool Client (Public SPA)"
+}
+
+output "cognito_discovery_url" {
+  value       = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.pool.id}/.well-known/openid-configuration"
+  description = "OIDC Discovery URL for the Cognito User Pool"
+}
+
+output "cognito_demo_email" {
+  value       = "demo@fintwit.com"
+  description = "Initial demo user email for testing and portfolio access"
+}

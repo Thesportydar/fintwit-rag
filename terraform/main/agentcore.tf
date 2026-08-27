@@ -160,6 +160,13 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     server_protocol = "AGUI"
   }
 
+  authorizer_configuration {
+    custom_jwt_authorizer {
+      discovery_url   = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.pool.id}/.well-known/openid-configuration"
+      allowed_clients = [aws_cognito_user_pool_client.client.id]
+    }
+  }
+
   environment_variables = {
     JINA_API_KEY              = var.jina_api_key
     QDRANT_URL                = "http://${var.qdrant_domain_name}:6333"
@@ -181,6 +188,8 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     CRAG_RELEVANCE_THRESHOLD  = "0.6"
     MEMORY_TOKEN_LIMIT        = "3000"
     MEMORY_KEEP_MESSAGES      = "6"
+    RATE_LIMIT_REQUESTS       = "5"
+    RATE_LIMIT_WINDOW_SECONDS = "1800"
     LANGSMITH_TRACING         = var.langsmith_api_key != "" ? "true" : "false"
     LANGSMITH_API_KEY         = var.langsmith_api_key
     LANGSMITH_PROJECT         = var.langsmith_project
@@ -188,6 +197,8 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
 
   depends_on = [
     aws_iam_role_policy.agentcore_runtime_policy,
-    aws_ecr_repository.agent
+    aws_ecr_repository.agent,
+    aws_cognito_user_pool.pool,
+    aws_cognito_user_pool_client.client
   ]
 }

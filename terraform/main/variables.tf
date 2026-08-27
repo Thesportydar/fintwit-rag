@@ -160,3 +160,10 @@ variable "s3_processed_prefix" {
   type        = string
   default     = "processed"
 }
+
+variable "cognito_demo_password" {
+  description = "Contraseña inicial para el usuario demo de Cognito"
+  type        = string
+  sensitive   = true
+  default     = "FinTwit2026!"
+}

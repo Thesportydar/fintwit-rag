@@ -39,6 +39,10 @@ class AppConfig:
     langsmith_api_key: str | None = None
     langsmith_project: str = "fintwit-rag"
 
+    # Rate Limiting
+    rate_limit_requests: int = 5
+    rate_limit_window_seconds: int = 1800
+
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
@@ -66,4 +70,6 @@ class AppConfig:
             langsmith_tracing=os.environ.get("LANGSMITH_TRACING", "false").lower() in ("true", "1"),
             langsmith_api_key=os.environ.get("LANGSMITH_API_KEY"),
             langsmith_project=os.environ.get("LANGSMITH_PROJECT", cls.langsmith_project),
+            rate_limit_requests=int(os.environ.get("RATE_LIMIT_REQUESTS", cls.rate_limit_requests)),
+            rate_limit_window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", cls.rate_limit_window_seconds)),
         )

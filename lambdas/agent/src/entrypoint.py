@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from collections import defaultdict
 from pathlib import Path
 
 from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
-from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-# Cargar .env si existe en el filesystem local (en AWS las variables vienen inyectadas en el entorno)
-_repo_root = Path(__file__).resolve().parents[3]
-_env_path = _repo_root / ".env"
-if _env_path.is_file():
-    load_dotenv(_env_path, override=False)
+# Cargar .env opcionalmente si dotenv esta instalado y existe el archivo local
+try:
+    from dotenv import load_dotenv
+
+    _repo_root = Path(__file__).resolve().parents[3]
+    _env_path = _repo_root / ".env"
+    if _env_path.is_file():
+        load_dotenv(_env_path, override=False)
+except ImportError:
+    pass
 
 try:
     from openinference.instrumentation.langchain import LangChainInstrumentor
@@ -21,13 +28,21 @@ try:
 except ImportError:
     pass
 
-from .agent import create_agent_app
+try:
+    from .agent import create_agent_app
+    from .config import AppConfig
+except (ImportError, ValueError):
+    from src.agent import create_agent_app
+    from src.config import AppConfig
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Cargar configuracion centralizada
+app_config = AppConfig.from_env()
+
 # Inicializar grafo de LangGraph
-agent_app = create_agent_app()
+agent_app = create_agent_app(app_config=app_config)
 
 # Inicializar servidor FastAPI para el protocolo AG-UI
 app = FastAPI(
@@ -35,6 +50,48 @@ app = FastAPI(
     description="Agent User Interaction (AG-UI) Server for Amazon Bedrock AgentCore Runtime",
     version="1.0.0",
 )
+
+# Estructura in-memory para Rate Limiting (Sliding Window)
+_request_timestamps: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Aplica Rate Limiting (Sliding Window) por cliente excluyendo endpoints de health check."""
+    if request.url.path in ("/ping", "/health"):
+        return await call_next(request)
+
+    forwarded = request.headers.get("x-forwarded-for")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+    auth_header = request.headers.get("authorization", "")
+    client_key = auth_header[:32] if auth_header else client_ip
+
+    now = time.time()
+    window = app_config.rate_limit_window_seconds
+    max_requests = app_config.rate_limit_requests
+
+    timestamps = [ts for ts in _request_timestamps[client_key] if now - ts < window]
+    _request_timestamps[client_key] = timestamps
+
+    if len(timestamps) >= max_requests:
+        retry_after = int(window - (now - timestamps[0]))
+        logger.warning(
+            "Rate limit excedido para cliente '%s': %d solicitudes en %d segundos",
+            client_key,
+            len(timestamps),
+            window,
+        )
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "Rate limit exceeded",
+                "detail": f"Limite de {max_requests} consultas cada {window // 60} minutos excedido. Por favor intenta mas tarde.",
+                "retry_after_seconds": max(1, retry_after),
+            },
+        )
+
+    _request_timestamps[client_key].append(now)
+    return await call_next(request)
 
 
 @app.get("/ping")

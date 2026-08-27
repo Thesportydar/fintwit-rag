@@ -89,3 +89,29 @@ def agentcore_runtime_arn(request):
         "No se pudo determinar el ARN de Bedrock AgentCore Runtime. "
         "Configurá AGENTCORE_RUNTIME_ARN en .env o pasá --runtime-arn arn:aws:bedrock-agentcore:..."
     )
+
+
+@pytest.fixture(scope="session")
+def cognito_auth_info():
+    """Obtiene el client_id y credenciales demo de Cognito via Terraform outputs."""
+    tf_dir = Path(__file__).parent.parent / "terraform" / "main"
+    res = subprocess.run(
+        ["terraform", "output", "-json"],
+        cwd=tf_dir,
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode == 0:
+        data = json.loads(res.stdout)
+        client_id = data.get("cognito_client_id", {}).get("value")
+        pool_id = data.get("cognito_user_pool_id", {}).get("value")
+        email = data.get("cognito_demo_email", {}).get("value", "demo@fintwit.com")
+        password = os.getenv("COGNITO_DEMO_PASSWORD", "FinTwit2026!")
+        if client_id and pool_id:
+            return {
+                "client_id": client_id,
+                "user_pool_id": pool_id,
+                "email": email,
+                "password": password,
+            }
+    return None

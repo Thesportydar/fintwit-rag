@@ -399,3 +399,50 @@ def test_agent_workflow_crag_correction_loop():
 
     tool_messages = [m for m in final_state["messages"] if getattr(m, "type", None) == "tool"]
     assert len(tool_messages) == 2
+
+
+def test_entrypoint_rate_limiting(monkeypatch):
+    """Valida que el middleware de rate limiting permita hasta N requests y luego retorne HTTP 429."""
+    from agent.src import entrypoint
+    from agent.src.config import AppConfig
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("RATE_LIMIT_REQUESTS", "3")
+    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "60")
+    monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
+
+    # Limpiar timestamps previos en memoria
+    entrypoint._request_timestamps.clear()
+
+    client = TestClient(entrypoint.app)
+
+    # Healthchecks no deben ser rate-limited
+    for _ in range(5):
+        resp = client.get("/ping")
+        assert resp.status_code == 200
+
+    # Invocaciones estándar (3 permitidas)
+    for i in range(3):
+        resp = client.post(
+            "/invocations",
+            json={
+                "threadId": "test-rl",
+                "runId": f"run-{i}",
+                "messages": [{"role": "user", "content": "hola", "id": f"msg-{i}"}],
+            },
+        )
+        assert resp.status_code != 429, f"El request {i+1} no debio ser bloqueado"
+
+    # 4to request debe ser bloqueado con HTTP 429
+    blocked_resp = client.post(
+        "/invocations",
+        json={
+            "threadId": "test-rl",
+            "runId": "run-blocked",
+            "messages": [{"role": "user", "content": "hola", "id": "msg-blocked"}],
+        },
+    )
+    assert blocked_resp.status_code == 429
+    data = blocked_resp.json()
+    assert data["error"] == "Rate limit exceeded"
+    assert "retry_after_seconds" in data
