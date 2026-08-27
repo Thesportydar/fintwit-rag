@@ -42,9 +42,9 @@ import { MarkdownText } from "./markdown-text";
 import type { ThreadItem, FilterSettings } from "./my-assistant";
 
 const SUGGESTIONS = [
-  "¿Qué opina @elonmusk sobre el precio de Tesla y Bitcoin?",
+  "Que opina @elonmusk sobre el precio de Tesla y Bitcoin?",
   "Buscame tweets sobre inflación y tasas de la FED en Noviembre 2023",
-  "¿Qué se comenta en Fintwit sobre regulaciones cripto recientemente?",
+  "Que se comenta en Fintwit sobre regulaciones cripto recientemente?",
 ];
 
 export function Claude({

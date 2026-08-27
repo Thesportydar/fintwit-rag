@@ -63,3 +63,9 @@ variable "route53_role_arn" {
   description = "The ARN of the role to assume for Route53 operations"
   type        = string
 }
+
+variable "qdrant_snapshot_id" {
+  description = "ID of the EBS snapshot to restore Qdrant data from"
+  type        = string
+  default     = ""
+}

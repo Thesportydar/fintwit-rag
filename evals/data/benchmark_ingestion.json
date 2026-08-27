@@ -1,0 +1,74 @@
+[
+  {
+    "tweet_id": "bench_001",
+    "user_handle": "trader_bonos",
+    "content": "Muy tomador el AL30 y GD30 hoy en el tramo corto. El mercado descuenta rollover exitoso de la deuda soberana.",
+    "expected_tickers": ["AL30", "GD30"],
+    "expected_sentiment": "bullish",
+    "expected_topics": ["deuda_soberana"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_002",
+    "user_handle": "merval_bear",
+    "content": "Feo cierre de la gallega (GGAL) perforando soporte con volumen. Cuidado con los bancos locales.",
+    "expected_tickers": ["GGAL"],
+    "expected_sentiment": "bearish",
+    "expected_topics": ["acciones_locales"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_003",
+    "user_handle": "bcra_data",
+    "content": "El BCRA compró USD 120M en el MLC. Las reservas brutas alcanzaron USD 28.500M.",
+    "expected_tickers": ["USD"],
+    "expected_sentiment": "neutral",
+    "expected_topics": ["politica_monetaria_bcra", "fx_dolar"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_004",
+    "user_handle": "tuitero_random",
+    "content": "Che qué calor que hace en Buenos Aires! Sale birra después de la oficina.",
+    "expected_tickers": [],
+    "expected_sentiment": "neutral",
+    "expected_topics": [],
+    "expected_insight": false
+  },
+  {
+    "tweet_id": "bench_005",
+    "user_handle": "crypto_arg",
+    "content": "Bitcoin (BTC) quebrando máximos históricos mientras el CCL se plancha.",
+    "expected_tickers": ["BTC", "CCL"],
+    "expected_sentiment": "bullish",
+    "expected_topics": ["cripto", "fx_dolar"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_006",
+    "user_handle": "analista_macro",
+    "content": "La inflación de abril en 2024 marcó 8.8%. Desaceleración contundente pero la recesión pega en el consumo.",
+    "expected_tickers": [],
+    "expected_sentiment": "neutral",
+    "expected_topics": ["inflacion_macro"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_007",
+    "user_handle": "bopreal_trader",
+    "content": "Excelente paridad en la serie 1 del BOPREAL para importadores. Destrabando dividendos atrapados.",
+    "expected_tickers": ["BOPREAL"],
+    "expected_sentiment": "bullish",
+    "expected_topics": ["deuda_soberana", "politica_monetaria_bcra"],
+    "expected_insight": true
+  },
+  {
+    "tweet_id": "bench_008",
+    "user_handle": "meme_finance",
+    "content": "Yo viendo cómo sube todo menos la acción que compré ayer jajaja lpm.",
+    "expected_tickers": [],
+    "expected_sentiment": "neutral",
+    "expected_topics": [],
+    "expected_insight": false
+  }
+]

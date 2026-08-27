@@ -16,6 +16,7 @@ resource "aws_apigatewayv2_integration" "rag_lambda" {
   integration_method     = "POST"
   integration_uri        = aws_lambda_function.rag.invoke_arn
   payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
 }
 
 resource "aws_apigatewayv2_route" "query" {

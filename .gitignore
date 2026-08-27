@@ -31,17 +31,18 @@ env/
 .venv/
 .ruff_cache
 
-# Paquetes generados por Lambda
-**/layer.zip
-**/lambda.zip
-lambda/tmp/
-lambda/wheelhouse/
+# Paquetes generados por Lambda y Terraform
+*.zip
+lambdas/python/
+terraform/**/build/
+.deepeval/
 
-# Jupyter / VSCode / MacOS
+# Jupyter / VSCode / MacOS / Local tests
 .ipynb_checkpoints/
 .vscode/
 .DS_Store
 AGENTS.md
+AI_ML_AUDIT.md
 
 # ui
 ui/node_modules/

@@ -1,0 +1,31 @@
+[
+  {
+    "query": "Como contrastan $120.000M récord de GGAL en 1T con la leve suba de mora bancaria?",
+    "expected_output": "Los $120.000M récord de GGAL en el 1T reflejan un fuerte desempeño, impulsado por un mayor margen de intermediación financiera. Sin embargo, contrastan con la leve suba de la mora bancaria: aunque GGAL muestra una sólida rentabilidad, el aumento de incumplimientos representa un riesgo para el sector y merece seguimiento.",
+    "retrieval_context": [
+      "La gallega (GGAL) presentó ganancias récord por $120.000M en el 1Q, impulsada por mayor margen de intermediación financiera.",
+      "A pesar del balance de GGAL, ojo con la mora crediticia en el sector bancario que viene subiendo levemente."
+    ]
+  },
+  {
+    "query": "Como cerraron los bonos del tramo corto soberano AL30 y GD30?",
+    "expected_output": "El tramo corto de la deuda soberana cerró muy firme y con volumen sostenido, con el AL30 en USD 58.50 y el GD30 en USD 61.20.",
+    "retrieval_context": [
+      "Muy firme el tramo corto de la deuda soberana. El AL30 cerró en USD 58.50 y el GD30 en USD 61.20 con volumen sostenido."
+    ]
+  },
+  {
+    "query": "Que significan USD85M comprados por BCRA en mercado oficial, TNA 40%, y 'hoy' sin fecha?",
+    "expected_output": "Significa que el BCRA compró USD 85 millones en el mercado oficial de cambios. La tasa de política monetaria es del 40% TNA, es decir, 40% nominal anual, no necesariamente efectiva. 'Hoy' es ambiguo porque el texto no indica una fecha concreta.",
+    "retrieval_context": [
+      "El BCRA compró hoy USD 85M en el mercado oficial. La tasa de política monetaria se mantiene en 40% TNA."
+    ]
+  },
+  {
+    "query": "Como se relacionan CCL a $1280, BTC sobre USD 65.000 y fuerte arbitraje local?",
+    "expected_output": "El CCL en $1280 indica una fuerte presión sobre el dólar financiero, mientras que el BTC por encima de USD 65.000 refleja una cotización internacional elevada. El fuerte arbitraje local vincula ambos mercados: operadores aprovechan diferencias de precios entre el BTC valuado en pesos y su referencia en dólares para realizar operaciones, lo que puede presionar al alza tanto al CCL como al precio local de Bitcoin.",
+    "retrieval_context": [
+      "El CCL cerró en $1280 mientras Bitcoin (BTC) superó los USD 65.000 con fuerte arbitraje local."
+    ]
+  }
+]

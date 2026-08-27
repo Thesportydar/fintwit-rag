@@ -1,0 +1,7 @@
+boto3==1.43.29
+openai==2.41.1
+pyarrow==19.0.1
+pydantic==2.13.4
+qdrant-client==1.18.0
+requests==2.34.2
+tqdm==4.68.2

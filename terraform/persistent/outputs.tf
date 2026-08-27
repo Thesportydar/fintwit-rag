@@ -1,11 +1,11 @@
-output "qdrant_ebs_volume_id" {
-  value       = aws_ebs_volume.qdrant.id
-  description = "The ID of the persistent EBS volume for Qdrant"
+output "qdrant_snapshot_id" {
+  value       = nonsensitive(aws_ssm_parameter.qdrant_snapshot_id.value)
+  description = "The snapshot ID configured for Qdrant data"
 }
 
 output "qdrant_ssm_parameter_name" {
-  value       = aws_ssm_parameter.qdrant_volume_id.name
-  description = "The SSM parameter name storing the volume ID"
+  value       = aws_ssm_parameter.qdrant_snapshot_id.name
+  description = "The SSM parameter name storing the snapshot ID"
 }
 
 output "dynamodb_checkpoint_table_arn" {

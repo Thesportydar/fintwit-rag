@@ -20,9 +20,18 @@ collection_name    = "tweets"
 llm_provider       = "openai"
 openai_api_key     = "sk-proj-AQUI_TU_OPENAI_API_KEY_SECRETA"
 openai_model       = "gpt-5.4"
+enrichment_model   = "gpt-4o-mini"
 
 # DNS / Route 53
 hosted_zone_name   = "tudominio.com"
 route53_role_arn   = "arn:aws:iam::<TU_ACCOUNT_ID>:role/SharedRoute53Role"
 
 apigw_domain_name  = "api.tudominio.com"
+
+# LangSmith Tracing (Opcional)
+langsmith_api_key  = ""
+langsmith_project  = "fintwit-rag-dev"
+
+# Ingestion S3 Bucket & Prefix
+s3_processed_bucket = "inaqui-prod-twitter-scraper"
+s3_processed_prefix = "processed"

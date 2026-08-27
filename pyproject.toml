@@ -28,6 +28,7 @@ select = [
 ]
 ignore = [
     "E501", # line too long (handled by formatting)
+    "E402", # module level import not at top of file (scripts / evals setup)
 ]
 
 [tool.ruff.format]
@@ -35,3 +36,11 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "evals"]
+markers = [
+    "unit: Tests unitarios rápidos sin dependencias externas",
+    "e2e: Tests de punta a punta contra la API en AWS",
+    "eval: Evaluaciones de calidad LLM con DeepEval",
+]

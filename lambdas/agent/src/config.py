@@ -24,9 +24,18 @@ class AppConfig:
     retriever_k: int = 50
     reranker_top_n: int = 5
 
+    # CRAG Settings
+    crag_max_attempts: int = 2
+    crag_relevance_threshold: float = 5.0
+
     # Middleware Settings
     memory_token_limit: int = 4000
     memory_keep_messages: int = 10
+
+    # Observability
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "fintwit-rag"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -46,6 +55,11 @@ class AppConfig:
             llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", cls.llm_max_tokens)),
             retriever_k=int(os.environ.get("RETRIEVER_K", cls.retriever_k)),
             reranker_top_n=int(os.environ.get("RERANKER_TOP_N", cls.reranker_top_n)),
+            crag_max_attempts=int(os.environ.get("CRAG_MAX_ATTEMPTS", cls.crag_max_attempts)),
+            crag_relevance_threshold=float(os.environ.get("CRAG_RELEVANCE_THRESHOLD", cls.crag_relevance_threshold)),
             memory_token_limit=int(os.environ.get("MEMORY_TOKEN_LIMIT", cls.memory_token_limit)),
             memory_keep_messages=int(os.environ.get("MEMORY_KEEP_MESSAGES", cls.memory_keep_messages)),
+            langsmith_tracing=os.environ.get("LANGSMITH_TRACING", "false").lower() in ("true", "1"),
+            langsmith_api_key=os.environ.get("LANGSMITH_API_KEY"),
+            langsmith_project=os.environ.get("LANGSMITH_PROJECT", cls.langsmith_project),
         )

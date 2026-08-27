@@ -26,6 +26,12 @@ variable "profile" {
   default     = "default"
 }
 
+variable "availability_zone" {
+  description = "The Availability Zone to deploy the EC2 instance and EBS volume"
+  type        = string
+  default     = "us-east-1a"
+}
+
 variable "jina_api_key" {
   description = "API key for Jina embeddings and reranking"
   type        = string
@@ -58,6 +64,12 @@ variable "openai_api_key" {
 
 variable "openai_model" {
   description = "OpenAI model name"
+  type        = string
+  default     = "gpt-4o-mini"
+}
+
+variable "enrichment_model" {
+  description = "OpenAI model name for tweet enrichment in pipeline lambda"
   type        = string
   default     = "gpt-4o-mini"
 }
@@ -122,4 +134,29 @@ variable "route53_role_arn" {
 variable "apigw_domain_name" {
   description = "The domain name for the HTTP API Gateway"
   type        = string
+}
+
+variable "langsmith_api_key" {
+  description = "API key for LangSmith tracing"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "langsmith_project" {
+  description = "Project name for LangSmith tracing"
+  type        = string
+  default     = "fintwit-rag"
+}
+
+variable "s3_processed_bucket" {
+  description = "Bucket S3 donde el scraper guarda tweets y la pipeline escribe Parquets"
+  type        = string
+  default     = "inaqui-prod-twitter-scraper"
+}
+
+variable "s3_processed_prefix" {
+  description = "Prefijo/carpeta dentro del bucket S3 para datos procesados"
+  type        = string
+  default     = "processed"
 }

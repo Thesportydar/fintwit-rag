@@ -18,8 +18,24 @@ output "lambda_arn" {
   value = aws_lambda_function.rag.arn
 }
 
-output "lambda_layer_arn" {
-  value = aws_lambda_layer_version.rag_layer.arn
+output "lambda_agent_layer_arn" {
+  value       = aws_lambda_layer_version.agent_layer.arn
+  description = "ARN of the Agent Lambda Layer"
+}
+
+output "lambda_pipeline_layer_arn" {
+  value       = aws_lambda_layer_version.pipeline_layer.arn
+  description = "ARN of the Ingest Pipeline Lambda Layer"
+}
+
+output "lambda_ingest_name" {
+  value       = aws_lambda_function.ingest.function_name
+  description = "Name of the Ingest Pipeline Lambda function"
+}
+
+output "lambda_ingest_arn" {
+  value       = aws_lambda_function.ingest.arn
+  description = "ARN of the Ingest Pipeline Lambda function"
 }
 
 output "api_custom_domain_endpoint" {
@@ -40,4 +56,9 @@ output "qdrant_public_ip" {
 output "qdrant_dashboard_url" {
   value       = "http://${var.qdrant_domain_name}:6333/dashboard"
   description = "The Qdrant Web Dashboard URL"
+}
+
+output "qdrant_ebs_volume_id" {
+  value       = aws_ebs_volume.qdrant.id
+  description = "The ID of the active EBS volume created for Qdrant"
 }

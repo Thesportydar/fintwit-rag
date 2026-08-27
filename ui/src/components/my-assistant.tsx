@@ -297,7 +297,7 @@ export function MyAssistant() {
           content: [
             {
               type: "text",
-              text: `⚠️ **Error de Conexión:** No se pudo obtener respuesta del RAG Agent. La API (${API_URL}) está fuera de línea en este momento. \n\n*Detalle del error: ${errorMessage}*`,
+              text: `[ERROR] **Error de Conexión:** No se pudo obtener respuesta del RAG Agent. La API (${API_URL}) está fuera de línea en este momento. \n\n*Detalle del error: ${errorMessage}*`,
             },
           ],
         };
