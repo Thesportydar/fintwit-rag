@@ -41,7 +41,6 @@ terraform/**/build/
 .ipynb_checkpoints/
 .vscode/
 .DS_Store
-AGENTS.md
 AI_ML_AUDIT.md
 
 # ui

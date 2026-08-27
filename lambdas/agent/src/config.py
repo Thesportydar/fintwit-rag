@@ -9,6 +9,8 @@ class AppConfig:
     qdrant_api_key: str | None
     collection_name: str = "tweets"
     llm_provider: str = "openai"
+    openai_model: str = "gpt-4o-mini"
+    bedrock_model_id: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
     jina_embed_url: str = "https://api.jina.ai/v1/embeddings"
     jina_rerank_url: str = "https://api.jina.ai/v1/rerank"
     jina_embed_model: str = "jina-embeddings-v5-text-nano"
@@ -28,7 +30,7 @@ class AppConfig:
     crag_max_attempts: int = 2
     crag_relevance_threshold: float = 5.0
 
-    # Middleware Settings
+    # Memory / Summarization Settings
     memory_token_limit: int = 4000
     memory_keep_messages: int = 10
 
@@ -45,6 +47,8 @@ class AppConfig:
             qdrant_api_key=os.environ.get("QDRANT_API_KEY"),
             collection_name=os.environ.get("COLLECTION_NAME", "tweets"),
             llm_provider=os.environ.get("LLM_PROVIDER", "openai"),
+            openai_model=os.environ.get("OPENAI_MODEL", cls.openai_model),
+            bedrock_model_id=os.environ.get("BEDROCK_MODEL_ID", cls.bedrock_model_id),
             jina_embed_url=os.environ.get("JINA_EMBED_URL", cls.jina_embed_url),
             jina_rerank_url=os.environ.get("JINA_RERANK_URL", cls.jina_rerank_url),
             jina_embed_model=os.environ.get("JINA_EMBED_MODEL", cls.jina_embed_model),

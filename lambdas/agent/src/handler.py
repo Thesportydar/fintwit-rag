@@ -1,113 +1,17 @@
+from __future__ import annotations
+
 import json
 import logging
-import os
-from pathlib import Path
 
-from langchain.agents import create_agent
-from langchain.agents.middleware import (
-    ModelRetryMiddleware,
-    SummarizationMiddleware,
-    ToolCallLimitMiddleware,
-    ToolRetryMiddleware,
-)
-from langgraph_checkpoint_aws import DynamoDBSaver
-from langgraph_checkpoint_aws.store.dynamodb import DynamoDBStore
-from qdrant_client import QdrantClient
-
-from .config import AppConfig
-from .embeddings import JinaEmbeddings, JinaRerankCompressor
-from .llm import get_llm
-from .vector_store import create_search_tweets_tool
+from .agent import create_agent_app
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-app_config = AppConfig.from_env()
-
-if app_config.langsmith_tracing:
-    os.environ["LANGSMITH_TRACING"] = "true"
-    if app_config.langsmith_api_key:
-        os.environ["LANGSMITH_API_KEY"] = app_config.langsmith_api_key
-    if app_config.langsmith_project:
-        os.environ["LANGSMITH_PROJECT"] = app_config.langsmith_project
-
-PROMPTS_DIR = Path(__file__).parent / "prompts"
-with open(PROMPTS_DIR / "system_prompt.txt", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read().strip()
-
-embeddings = JinaEmbeddings(
-    api_key=app_config.jina_api_key,
-    url=app_config.jina_embed_url,
-    model=app_config.jina_embed_model,
-)
-
-reranker = JinaRerankCompressor(
-    api_key=app_config.jina_api_key,
-    url=app_config.jina_rerank_url,
-    model=app_config.jina_rerank_model,
-    top_n=app_config.reranker_top_n,
-)
-
-qdrant_client = QdrantClient(
-    url=app_config.qdrant_url,
-    api_key=app_config.qdrant_api_key,
-)
-
-llm = get_llm(
-    provider=app_config.llm_provider,
-    temperature=app_config.llm_temperature,
-    max_tokens=app_config.llm_max_tokens,
-)
-
-search_tweets_tool = create_search_tweets_tool(
-    qdrant_client=qdrant_client,
-    collection_name=app_config.collection_name,
-    embeddings=embeddings,
-    compressor=reranker,
-    llm=llm,
-    k=app_config.retriever_k,
-    relevance_threshold=app_config.crag_relevance_threshold,
-    max_attempts=app_config.crag_max_attempts,
-)
-
-checkpointer = DynamoDBSaver(table_name=app_config.dynamodb_checkpoint_table)
-
-store = DynamoDBStore(table_name=app_config.dynamodb_store_table)
-
-agent_model = llm.bind_tools([search_tweets_tool], parallel_tool_calls=False)
-
-agent = create_agent(
-    model=agent_model,
-    tools=[search_tweets_tool],
-    checkpointer=checkpointer,
-    store=store,
-    middleware=[
-        ModelRetryMiddleware(
-            max_retries=3,
-            backoff_factor=2.0,
-            initial_delay=1.0,
-        ),
-        ToolRetryMiddleware(
-            max_retries=3,
-            backoff_factor=2.0,
-            initial_delay=1.0,
-        ),
-        ToolCallLimitMiddleware(
-            tool_name="search_tweets",
-            run_limit=1,
-            exit_behavior="continue",
-        ),
-        SummarizationMiddleware(
-            model=llm,
-            trigger=("tokens", app_config.memory_token_limit),
-            keep=("messages", app_config.memory_keep_messages),
-        ),
-    ],
-    system_prompt=SYSTEM_PROMPT,
-)
+agent_app = create_agent_app()
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: object) -> dict:
     try:
         body = json.loads(event.get("body") or "{}")
 
@@ -118,15 +22,19 @@ def lambda_handler(event, context):
             return _response(400, {"error": "El campo 'messages' o 'query' es requerido en el body."})
 
         thread_id = body.get("thread_id", "default_thread")
-        config = {"configurable": {"thread_id": thread_id}}
+        extra_configurable = body.get("extra_configurable")
 
-        result = agent.invoke({"messages": messages}, config=config)
+        result = agent_app.invoke(
+            messages=messages,
+            thread_id=thread_id,
+            extra_configurable=extra_configurable,
+        )
 
         response_messages = []
         for m in result.get("messages", []):
             msg_dict = {
-                "role": m.type,
-                "content": m.content,
+                "role": getattr(m, "type", "unknown"),
+                "content": getattr(m, "content", ""),
             }
             if hasattr(m, "tool_calls") and m.tool_calls:
                 msg_dict["tool_calls"] = m.tool_calls
@@ -142,7 +50,7 @@ def lambda_handler(event, context):
         )
 
     except Exception as exc:
-        logger.error("Unhandled error", exc_info=True)
+        logger.error("Unhandled error in lambda_handler", exc_info=True)
         return _response(500, {"error": str(exc)})
 
 

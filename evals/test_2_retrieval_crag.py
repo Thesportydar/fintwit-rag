@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 # Cargar .env si existe
 env_path = Path(".env")
@@ -32,9 +31,9 @@ if str(LAMBDAS_ROOT) not in sys.path:
 import pytest
 from agent.src.config import AppConfig
 from agent.src.llm import get_llm
-from agent.src.workflows.crag import CRAGState, _rewrite_query, build_crag_workflow
+from agent.src.workflows.crag import AgentState, _rewrite_query, build_agent_workflow
 from deepeval.test_case import LLMTestCase
-from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage
 
 from evals.metrics import create_contextual_relevancy_metric
 
@@ -50,7 +49,7 @@ def test_layer2_query_rewriter_guardrails(llm):
     print("\n--- [CAPA 2] Guardrails de Reescritura CRAG ---")
 
     # Caso 1: Expansión de jerga
-    state1: CRAGState = {"query": "qué opinan de la gallega y los bonos soberanos", "search_attempts": 0}
+    state1: AgentState = {"query": "qué opinan de la gallega y los bonos soberanos", "search_attempts": 0}
     config = {"configurable": {"llm": llm}}
     res1 = _rewrite_query(state1, config)
     rewritten1 = res1["rewritten_query"].upper()
@@ -58,7 +57,7 @@ def test_layer2_query_rewriter_guardrails(llm):
     assert "GGAL" in rewritten1 or "GALICIA" in rewritten1, "Debe expandir 'la gallega' a GGAL"
 
     # Caso 2: Respeto estricto de años/fechas sin inventar tickers
-    state2: CRAGState = {"query": "expectativas de la tasa del BCRA para 2024", "search_attempts": 0}
+    state2: AgentState = {"query": "expectativas de la tasa del BCRA para 2024", "search_attempts": 0}
     res2 = _rewrite_query(state2, config)
     rewritten2 = res2["rewritten_query"].upper()
     print(f"Original: {state2['query']} -> Rewritten: {res2['rewritten_query']}")
@@ -89,45 +88,32 @@ def test_layer2_contextual_relevancy_metric():
 
 
 def test_layer2_crag_self_correction_trigger(llm):
-    """Evalúa que si el contexto inicial es irrelevante, el flujo active el reintento."""
-    print("\n--- [CAPA 2] Validación del Loop de Auto-Corrección CRAG ---")
-    workflow = build_crag_workflow()
+    """Evalúa que la tool de búsqueda se invoque correctamente en el flujo del agente."""
+    print("\n--- [CAPA 2] Validación de Ejecución de Tool en Agent Workflow ---")
+    from langchain_core.tools import tool
 
-    # Mock de búsqueda que devuelve documentos sobre fútbol en vez de finanzas
-    mock_vectorstore = MagicMock()
-    mock_vectorstore.similarity_search.return_value = [
-        Document(
-            page_content="River Plate le ganó a Boca Juniors en el superclásico de fútbol 2 a 0 con goles de Borja.",
-            metadata={"user_handle": "deportes_bot", "tweet_timestamp": "2024-05-10T12:00:00Z"},
-        )
-    ]
+    @tool
+    def search_tweets(query: str, **kwargs) -> str:
+        """Herramienta mock de búsqueda para test."""
+        return "<<< TWEET >>>\nautor: @deportes_bot\nfecha: 2024-05-10\ncontenido: River Plate le ganó a Boca Juniors 2 a 0.\n<<< /TWEET >>>"
 
-    class MockCompressor:
-        def compress_documents(self, docs, query):
-            return docs
+    workflow = build_agent_workflow(search_tool=search_tweets)
 
     config = {
         "configurable": {
-            "vectorstore": mock_vectorstore,
-            "compressor": MockCompressor(),
+            "search_tool": search_tweets,
             "llm": llm,
-            "k": 5,
-            "relevance_threshold": 5.0,
-            "max_attempts": 2,
         }
     }
 
-    input_state: CRAGState = {
-        "query": "balance y proyecciones de YPFD",
-        "search_attempts": 0,
-        "documents": [],
+    input_state: AgentState = {
+        "messages": [HumanMessage(content="balance y proyecciones de YPFD")],
     }
 
     result = workflow.invoke(input_state, config=config)
-    print(f"Search attempts finales: {result.get('search_attempts')}")
-    print(f"Relevance Score final: {result.get('relevance_score')}")
+    print(f"Resultado final: {result.get('response', '')[:100]}...")
 
-    # Debe haber ejecutado al menos 2 intentos de búsqueda tras rechazar el fútbol
-    assert result.get("search_attempts", 1) >= 2
-    assert result.get("relevance_score", 0) < 5.0
-    print("[OK] Loop de auto-corrección disparado correctamente ante contexto espurio!")
+    # Debe contener la invocación de la tool en messages
+    msg_types = [m.type for m in result.get("messages", [])]
+    assert "tool" in msg_types, "El flujo debe contener un ToolMessage producto de la ejecución de search_tweets"
+    print("[OK] ToolNode ejecutado correctamente en el flujo!")

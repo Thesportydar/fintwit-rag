@@ -17,6 +17,9 @@ if str(LAMBDAS_ROOT) not in sys.path:
 
 def pytest_addoption(parser):
     parser.addoption("--endpoint", action="store", default=None, help="URL de la API para tests E2E")
+    parser.addoption(
+        "--runtime-arn", action="store", default=None, help="ARN de Bedrock AgentCore Runtime para tests E2E"
+    )
     parser.addoption("--live", action="store_true", default=False, help="Habilita tests que pegan a servicios live")
 
 
@@ -51,4 +54,38 @@ def api_endpoint(request):
     raise ValueError(
         "No se pudo determinar el endpoint de la API para tests live. "
         "Configurá API_ENDPOINT en .env o pasá --endpoint https://.../query"
+    )
+
+
+@pytest.fixture(scope="session")
+def agentcore_runtime_arn(request):
+    """
+    Obtiene el ARN de Bedrock AgentCore Runtime:
+    1. CLI arg (--runtime-arn)
+    2. .env / variable de entorno (AGENTCORE_RUNTIME_ARN)
+    3. Auto-descubrimiento via 'terraform output -json'
+    """
+    cli_val = request.config.getoption("--runtime-arn", default=None)
+    if cli_val:
+        return cli_val
+
+    env_val = os.getenv("AGENTCORE_RUNTIME_ARN")
+    if env_val:
+        return env_val
+
+    tf_dir = Path(__file__).parent.parent / "terraform" / "main"
+    res = subprocess.run(
+        ["terraform", "output", "-json"],
+        cwd=tf_dir,
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode == 0:
+        data = json.loads(res.stdout)
+        if "agentcore_runtime_arn" in data and "value" in data["agentcore_runtime_arn"]:
+            return data["agentcore_runtime_arn"]["value"]
+
+    raise ValueError(
+        "No se pudo determinar el ARN de Bedrock AgentCore Runtime. "
+        "Configurá AGENTCORE_RUNTIME_ARN en .env o pasá --runtime-arn arn:aws:bedrock-agentcore:..."
     )

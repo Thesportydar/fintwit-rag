@@ -1,0 +1,20 @@
+# Virtual environments & Package managers
+.venv/
+venv/
+env/
+
+# Caches & Test artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+tests/
+
+# Environment variables & Local metadata
+.env*
+.DS_Store
+*.md
+.git/
+.lambdaignore
+.dockerignore

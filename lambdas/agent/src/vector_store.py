@@ -11,8 +11,6 @@ from langchain_core.tools import tool
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue, Range
 
-from .workflows.crag import build_crag_workflow
-
 
 @dataclass(frozen=True)
 class TweetFilters:
@@ -130,35 +128,36 @@ def hybrid_search_tweets(
     return docs
 
 
+def format_tweet_doc(d: Document) -> str:
+    meta = d.metadata or {}
+    handle = meta.get("user_handle", "unknown")
+    timestamp = meta.get("tweet_timestamp", "")
+    date = timestamp[:10] if timestamp else "unknown"
+    return f"<<< TWEET >>>\nautor: @{handle}\nfecha: {date}\ncontenido: {d.page_content}\n<<< /TWEET >>>"
+
+
 def create_search_tweets_tool(
     qdrant_client: QdrantClient,
     collection_name: str,
     embeddings: Embeddings,
-    compressor: BaseDocumentCompressor,
-    llm: Any,
-    k: int = 50,
-    relevance_threshold: float = 5.0,
-    max_attempts: int = 2,
+    compressor: BaseDocumentCompressor | None = None,
+    limit: int = 50,
 ):
-    """
-    Construye la herramienta @tool de búsqueda que encapsula el workflow compilado
-    de Corrective RAG (CRAG) con Hybrid Search nativo (Dense + BM25 + RRF).
-    """
-    crag_graph = build_crag_workflow()
+    """Crea la herramienta @tool ejecutable conectada a Qdrant y Jina Reranker."""
+    date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-    @tool(response_format="content_and_artifact")
+    @tool
     def search_tweets(
         query: str,
-        start_date: str = None,
-        end_date: str = None,
-        user_handles: list[str] = None,
-        tickers: list[str] = None,
-        sentiment: str = None,
-        topics: list[str] = None,
-    ) -> tuple[str, list[Document]]:
-        """
-        Busca tweets financieros en la base de datos de fintwit usando un motor de Corrective RAG (CRAG)
-        con búsqueda híbrida (Dense + BM25 server-side inference + RRF) y Re-ranking contextual.
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_handles: list[str] | None = None,
+        tickers: list[str] | None = None,
+        sentiment: str | None = None,
+        topics: list[str] | None = None,
+    ) -> str:
+        """Busca tweets financieros en la base de datos de fintwit usando búsqueda híbrida
+        (Dense + BM25 server-side inference + RRF) y Re-ranking contextual con Jina.
 
         Args:
             query: Frase en lenguaje natural que describa el contenido buscado.
@@ -169,12 +168,10 @@ def create_search_tweets_tool(
             sentiment: Filtrar por sentimiento específico ('bullish', 'bearish', 'neutral'). Opcional.
             topics: Lista de tópicos específicos a filtrar (ej: ['acciones_locales', 'deuda_soberana', 'fx_dolar']). Opcional.
         """
-        date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
         if start_date and not date_pattern.match(start_date):
-            return f"Error de validación: start_date '{start_date}' no tiene el formato correcto YYYY-MM-DD.", []
+            return f"Error de validación: start_date '{start_date}' no tiene el formato correcto YYYY-MM-DD."
         if end_date and not date_pattern.match(end_date):
-            return f"Error de validación: end_date '{end_date}' no tiene el formato correcto YYYY-MM-DD.", []
+            return f"Error de validación: end_date '{end_date}' no tiene el formato correcto YYYY-MM-DD."
 
         clean_handles = [h.lstrip("@") for h in (user_handles or [])]
 
@@ -194,42 +191,21 @@ def create_search_tweets_tool(
             if missing_tickers:
                 effective_query = f"{effective_query} {' '.join(missing_tickers)}"
 
-        wf_input = {
-            "query": effective_query,
-            "start_date": start_date,
-            "end_date": end_date,
-            "user_handles": clean_handles,
-            "search_attempts": 0,
-            "documents": [],
-        }
+        docs = hybrid_search_tweets(
+            client=qdrant_client,
+            collection_name=collection_name,
+            query=effective_query,
+            embeddings=embeddings,
+            qdrant_filter=qdrant_filter,
+            limit=limit,
+        )
 
-        config = {
-            "configurable": {
-                "qdrant_client": qdrant_client,
-                "collection_name": collection_name,
-                "embeddings": embeddings,
-                "compressor": compressor,
-                "llm": llm,
-                "k": k,
-                "qdrant_filter": qdrant_filter,
-                "relevance_threshold": relevance_threshold,
-                "max_attempts": max_attempts,
-            }
-        }
+        if not docs:
+            return "No se encontraron tweets relevantes para la búsqueda solicitada."
 
-        result = crag_graph.invoke(wf_input, config=config)
-        docs = result.get("documents", [])
-        response_text = result.get("final_evidence") or result.get("response")
-        if (not response_text or "No se encontraron" in response_text) and docs:
-            response_text = "\n\n".join(
-                [
-                    f"@{d.metadata.get('user_handle', 'anon')} ({d.metadata.get('tweet_timestamp', '')[:10]}): {d.page_content}"
-                    for d in docs
-                ]
-            )
-        if not response_text:
-            response_text = "No se encontraron resultados relevantes."
+        if compressor:
+            docs = list(compressor.compress_documents(docs, effective_query))
 
-        return response_text, docs
+        return "\n\n".join(format_tweet_doc(d) for d in docs)
 
     return search_tweets

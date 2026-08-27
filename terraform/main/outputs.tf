@@ -62,3 +62,18 @@ output "qdrant_ebs_volume_id" {
   value       = aws_ebs_volume.qdrant.id
   description = "The ID of the active EBS volume created for Qdrant"
 }
+
+output "agent_ecr_repository_url" {
+  value       = aws_ecr_repository.agent.repository_url
+  description = "The ECR Repository URL for the FinTwit Agent container"
+}
+
+output "agentcore_runtime_id" {
+  value       = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_id
+  description = "The Bedrock AgentCore Agent Runtime ID"
+}
+
+output "agentcore_runtime_arn" {
+  value       = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
+  description = "The Bedrock AgentCore Agent Runtime ARN"
+}

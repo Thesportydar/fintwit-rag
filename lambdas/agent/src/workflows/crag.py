@@ -1,32 +1,43 @@
 from __future__ import annotations
 
+import logging
+import uuid
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
-from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage, SystemMessage
+logger = logging.getLogger(__name__)
+
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph import END, START, StateGraph
-from langgraph.types import RetryPolicy
+from langgraph.graph import END, START, StateGraph, add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-_RETRY = RetryPolicy(max_attempts=3, initial_interval=1.0)
+
+_AGENT_PROMPT = (_PROMPTS_DIR / "agent_prompt.txt").read_text(encoding="utf-8").strip()
+_SYNTHESIZE_PROMPT = (_PROMPTS_DIR / "synthesize_prompt.txt").read_text(encoding="utf-8").strip()
+_SUMMARIZE_PROMPT = (_PROMPTS_DIR / "summarize_prompt.txt").read_text(encoding="utf-8").strip()
+_RELEVANCE_CHECK_PROMPT = (_PROMPTS_DIR / "relevance_check_prompt.txt").read_text(encoding="utf-8").strip()
+_QUERY_REWRITE_PROMPT = (_PROMPTS_DIR / "query_rewrite_prompt.txt").read_text(encoding="utf-8").strip()
 
 
 class RelevanceResult(BaseModel):
     score: int = Field(description="Score de relevancia de 0 a 10")
     relevant: bool = Field(description="True si el score es >= 5")
-    reason: str = Field(description="Breve justificación del score asignado")
+    reason: str = Field(description="Breve justificacion del score asignado")
 
 
-class CRAGState(TypedDict, total=False):
+class AgentState(TypedDict, total=False):
+    messages: Annotated[list[Any], add_messages]
+    summary: str
     query: str
     start_date: str | None
     end_date: str | None
     tickers: list[str]
     sentiment: str | None
     topics: list[str]
+    user_handles: list[str]
     rewritten_query: str
     documents: list[Any]
     relevance_score: float
@@ -37,45 +48,215 @@ class CRAGState(TypedDict, total=False):
     response: str
 
 
-def _format_doc(d: Document) -> str:
-    meta = d.metadata or {}
-    handle = meta.get("user_handle", "unknown")
-    timestamp = meta.get("tweet_timestamp", "")
-    date = timestamp[:10] if timestamp else "unknown"
+def _maybe_summarize(state: AgentState, config: RunnableConfig) -> dict:
+    """Comprime el historial de mensajes si supera el limite de tokens."""
+    messages = state.get("messages", [])
+    token_limit = config.get("configurable", {}).get("memory_token_limit", 4000)
+    keep_messages = config.get("configurable", {}).get("memory_keep_messages", 10)
 
-    parts = [
-        "<<< TWEET >>>",
-        f"autor: @{handle}",
-        f"fecha: {date}",
-        f"contenido: {d.page_content}",
-        "<<< /TWEET >>>",
-    ]
-    return "\n".join(parts)
+    # Estimacion de tokens: ~4 chars = 1 token
+    total_tokens = sum(len(str(getattr(m, "content", m))) for m in messages) // 4
 
+    if total_tokens <= token_limit or len(messages) <= keep_messages:
+        return {}
 
-def _rewrite_query(state: CRAGState, config: RunnableConfig) -> dict:
     llm = config["configurable"]["llm"]
-    attempt = state.get("search_attempts", 0) + 1
-    system_prompt = (_PROMPTS_DIR / "query_rewrite_prompt.txt").read_text(encoding="utf-8").strip()
 
-    original_query = state.get("query", "")
-    prev_query = state.get("rewritten_query")
-    prev_reason = state.get("relevance_reason")
+    old_messages = messages[:-keep_messages]
 
-    if attempt == 1 or not prev_query:
-        user_msg = f'Consulta del usuario: "{original_query}"'
-    else:
-        reason_ctx = f'\nMotivo de descarte de resultados anteriores: "{prev_reason}"' if prev_reason else ""
-        user_msg = (
-            f'Consulta original: "{original_query}"\n'
-            f'INTENTO {attempt}. La búsqueda anterior con query "{prev_query}" no obtuvo resultados relevantes.\n'
-            f"{reason_ctx}\n"
-            "Reformulá la query para encontrar tweets pertinentes sobre el tema sin inventar datos ni tickers."
+    history_lines = []
+    existing_summary = state.get("summary")
+    if existing_summary:
+        history_lines.append(f"RESUMEN PREVIO: {existing_summary}")
+
+    for m in old_messages:
+        role = getattr(m, "type", "msg").upper()
+        content = m.content if isinstance(getattr(m, "content", None), str) else str(getattr(m, "content", m))
+        history_lines.append(f"{role}: {content}")
+
+    history_text = "\n".join(history_lines)
+
+    summary_response = llm.invoke(
+        [
+            SystemMessage(content=_SUMMARIZE_PROMPT),
+            HumanMessage(content=f"Resume esta conversacion:\n\n{history_text}"),
+        ],
+        config={**config, "tags": config.get("tags", []) + ["summarize", "hide_stream"]},
+    )
+
+    summary_content = summary_response.content
+    if isinstance(summary_content, list):
+        summary_content = " ".join(
+            b.get("text", "") for b in summary_content if isinstance(b, dict) and b.get("type") == "text"
         )
+    elif not isinstance(summary_content, str):
+        summary_content = str(summary_content)
+
+    removes = [RemoveMessage(id=m.id) for m in old_messages if getattr(m, "id", None)]
+    return {
+        "summary": summary_content.strip(),
+        "messages": removes,
+    }
+
+
+def _agent_node(state: AgentState, config: RunnableConfig) -> dict:
+    """Decide si responder directamente o invocar search_tweets mediante ToolNode."""
+    llm = config["configurable"]["llm"]
+    search_tool = config["configurable"]["search_tool"]
+
+    bound_llm = llm.bind_tools([search_tool], parallel_tool_calls=False)
+    messages = state.get("messages", [])
+
+    agent_system = _AGENT_PROMPT
+    summary = state.get("summary")
+    if summary:
+        agent_system = f"{agent_system}\n\n[RESUMEN DE CONVERSACION PREVIA]\n{summary}"
+
+    formatted_messages = [SystemMessage(content=agent_system)] + list(messages)
+    response = bound_llm.invoke(
+        formatted_messages,
+        config={**config, "tags": config.get("tags", []) + ["agent_decision"]},
+    )
+
+    return {"messages": [response]}
+
+
+def _check_relevance(state: AgentState, config: RunnableConfig) -> dict:
+    """Evalua la relevancia de los fragmentos de tweets recuperados por la tool search_tweets."""
+    messages = state.get("messages", [])
+
+    # Obtener el ultimo ToolMessage emitido por search_tweets
+    last_tool_msg = next((m for m in reversed(messages) if getattr(m, "type", None) == "tool"), None)
+    tool_content = last_tool_msg.content if last_tool_msg else ""
+    if isinstance(tool_content, list):
+        tool_content = " ".join(
+            b.get("text", "") for b in tool_content if isinstance(b, dict) and b.get("type") == "text"
+        )
+    else:
+        tool_content = str(tool_content)
+
+    attempt = state.get("search_attempts", 0) + 1
+
+    # Si la herramienta no devolvio tweets
+    if not tool_content.strip() or "no se encontraron tweets" in tool_content.lower():
+        return {
+            "relevance_score": 0.0,
+            "is_relevant": False,
+            "relevance_reason": "La herramienta no encontro tweets para la busqueda.",
+            "search_attempts": attempt,
+        }
+
+    llm = config["configurable"]["llm"]
+
+    # Encontrar la consulta original del usuario
+    user_query = state.get("query")
+    if not user_query:
+        for m in messages:
+            if getattr(m, "type", None) in ("human", "user"):
+                user_query = m.content if isinstance(m.content, str) else str(m.content)
+                break
+    if not user_query:
+        user_query = "consulta general"
+
+    # Determinar la query utilizada en la busqueda
+    query_used = state.get("rewritten_query")
+    if not query_used:
+        for m in reversed(messages):
+            if hasattr(m, "tool_calls") and m.tool_calls:
+                for tc in m.tool_calls:
+                    if tc.get("name") == "search_tweets" and "query" in tc.get("args", {}):
+                        query_used = tc["args"]["query"]
+                        break
+            if query_used:
+                break
+    if not query_used:
+        query_used = user_query
+
+    eval_msg = (
+        f'Consulta del usuario: "{user_query}"\n'
+        f'Query utilizada en la busqueda: "{query_used}"\n\n'
+        f"Fragmentos de tweets recuperados:\n{tool_content[:2000]}"
+    )
+
+    try:
+        structured_llm = llm.with_structured_output(RelevanceResult)
+        result: RelevanceResult = structured_llm.invoke(
+            [
+                SystemMessage(content=_RELEVANCE_CHECK_PROMPT),
+                HumanMessage(content=eval_msg),
+            ],
+            config={**config, "tags": config.get("tags", []) + ["crag_relevance_check", "hide_stream"]},
+        )
+        return {
+            "relevance_score": float(result.score),
+            "is_relevant": bool(result.relevant),
+            "relevance_reason": result.reason,
+            "search_attempts": attempt,
+        }
+    except Exception as exc:
+        logger.warning("CRAG relevance check fallo, usando fallback permisivo: %s", exc)
+        return {
+            "relevance_score": 6.0,
+            "is_relevant": True,
+            "relevance_reason": f"Evaluacion por defecto (fallback: {exc})",
+            "search_attempts": attempt,
+        }
+
+
+def _route_after_check(state: AgentState, config: RunnableConfig) -> str:
+    """Decide si proceder a la sintesis o activar reescritura correctiva."""
+    score = state.get("relevance_score", 0.0)
+    attempts = state.get("search_attempts", 1)
+    threshold = config.get("configurable", {}).get("relevance_threshold", 5.0)
+    max_attempts = config.get("configurable", {}).get("max_attempts", 2)
+
+    if score >= threshold or attempts >= max_attempts:
+        return "synthesize"
+    return "rewrite_query"
+
+
+def _rewrite_query(state: AgentState, config: RunnableConfig) -> dict:
+    """Reformula la query correctivamente y emite un nuevo tool call para ToolNode."""
+    llm = config["configurable"]["llm"]
+    messages = state.get("messages", [])
+    attempt = state.get("search_attempts", 1)
+
+    # Identificar la consulta original del usuario
+    original_query = state.get("query")
+    if not original_query:
+        for m in messages:
+            if getattr(m, "type", None) in ("human", "user"):
+                original_query = m.content if isinstance(m.content, str) else str(m.content)
+                break
+    if not original_query:
+        original_query = "consulta financiera"
+
+    prev_query = state.get("rewritten_query")
+    if not prev_query:
+        for m in reversed(messages):
+            if hasattr(m, "tool_calls") and m.tool_calls:
+                for tc in m.tool_calls:
+                    if tc.get("name") == "search_tweets" and "query" in tc.get("args", {}):
+                        prev_query = tc["args"]["query"]
+                        break
+            if prev_query:
+                break
+    if not prev_query:
+        prev_query = original_query
+
+    prev_reason = state.get("relevance_reason", "")
+
+    reason_ctx = f'\nMotivo de descarte de resultados anteriores: "{prev_reason}"' if prev_reason else ""
+    user_msg = (
+        f'Consulta original: "{original_query}"\n'
+        f'INTENTO {attempt + 1}. La busqueda anterior con query "{prev_query}" no obtuvo resultados relevantes.\n'
+        f"{reason_ctx}\n"
+        "Reformula la query para encontrar tweets pertinentes sobre el tema sin inventar datos ni tickers."
+    )
 
     response = llm.invoke(
         [
-            SystemMessage(content=system_prompt),
+            SystemMessage(content=_QUERY_REWRITE_PROMPT),
             HumanMessage(content=user_msg),
         ],
         config={**config, "tags": config.get("tags", []) + ["crag_rewrite", "hide_stream"]},
@@ -88,151 +269,94 @@ def _rewrite_query(state: CRAGState, config: RunnableConfig) -> dict:
     elif not isinstance(content, str):
         content = str(content)
 
+    rewritten = content.strip().strip('"').strip("'") or original_query
+
+    call_id = f"call_{uuid.uuid4().hex[:8]}"
+    retry_tool_call = AIMessage(
+        content=f"Reintentando busqueda con query optimizada: '{rewritten}'",
+        tool_calls=[
+            {
+                "name": "search_tweets",
+                "args": {"query": rewritten},
+                "id": call_id,
+            }
+        ],
+    )
+
     return {
-        "rewritten_query": content.strip() or original_query,
-        "search_attempts": attempt,
+        "rewritten_query": rewritten,
+        "messages": [retry_tool_call],
+        "search_attempts": attempt + 1,
     }
 
 
-def _search_and_rerank(state: CRAGState, config: RunnableConfig) -> dict:
-    qdrant_client = config["configurable"].get("qdrant_client")
-    collection_name = config["configurable"].get("collection_name")
-    embeddings = config["configurable"].get("embeddings")
-    compressor = config["configurable"]["compressor"]
-    k = config["configurable"].get("k", 50)
-    qdrant_filter = config["configurable"].get("qdrant_filter")
-    query = state.get("rewritten_query") or state.get("query", "")
-
-    search_fn = config["configurable"].get("search_fn")
-    if search_fn:
-        docs = search_fn(query, filter=qdrant_filter, k=k)
-    elif qdrant_client and collection_name and embeddings:
-        from ..vector_store import hybrid_search_tweets
-
-        docs = hybrid_search_tweets(
-            client=qdrant_client,
-            collection_name=collection_name,
-            query=query,
-            embeddings=embeddings,
-            qdrant_filter=qdrant_filter,
-            limit=k,
-        )
-    elif "vectorstore" in config["configurable"]:
-        vectorstore = config["configurable"]["vectorstore"]
-        search_kwargs = {"k": k}
-        if qdrant_filter is not None:
-            search_kwargs["filter"] = qdrant_filter
-        docs = vectorstore.similarity_search(query, **search_kwargs)
-    else:
-        docs = []
-
-    if not docs:
-        return {
-            "documents": [],
-            "relevance_score": 0.0,
-            "relevance_reason": "No se encontraron documentos en la base de datos para la búsqueda.",
-        }
-
-    reranked_docs = compressor.compress_documents(docs, query)
-    return {"documents": list(reranked_docs)}
-
-
-def _check_relevance(state: CRAGState, config: RunnableConfig) -> dict:
-    docs = state.get("documents", [])
-    if not docs:
-        return {
-            "relevance_score": 0.0,
-            "relevance_reason": "Sin documentos recuperados.",
-        }
-
+def _synthesize(state: AgentState, config: RunnableConfig) -> dict:
+    """Sintetiza la respuesta final del analista a partir de los resultados de la herramienta."""
     llm = config["configurable"]["llm"]
-    original_query = state.get("query", "")
-    rewritten = state.get("rewritten_query", "")
-    system_prompt = (_PROMPTS_DIR / "relevance_check_prompt.txt").read_text(encoding="utf-8").strip()
+    messages = state.get("messages", [])
 
-    snippets = "\n\n".join(
-        f"[{i + 1}] @{d.metadata.get('user_handle', 'anon')} ({d.metadata.get('tweet_timestamp', '')[:10]}): {d.page_content[:250]}"
-        for i, d in enumerate(docs[:8])
+    synth_system = _SYNTHESIZE_PROMPT
+    summary = state.get("summary")
+    if summary:
+        synth_system = f"{synth_system}\n\n[RESUMEN DE CONVERSACION PREVIA]\n{summary}"
+
+    relevance_score = state.get("relevance_score")
+    if relevance_score is not None:
+        relevance_reason = state.get("relevance_reason") or ""
+        crag_meta = f"\n\n[EVALUACION CRAG: Relevancia {relevance_score}/10 | {relevance_reason}]"
+        synth_system = f"{synth_system}{crag_meta}"
+
+    synth_messages: list[Any] = [SystemMessage(content=synth_system)] + list(messages)
+
+    response = llm.invoke(
+        synth_messages,
+        config={**config, "tags": config.get("tags", []) + ["agent_synthesis"]},
     )
-    user_msg = (
-        f'Consulta original: "{original_query}"\n'
-        f'Query utilizada: "{rewritten}"\n\n'
-        f"Fragmentos de tweets recuperados:\n{snippets}"
-    )
-
-    try:
-        structured_llm = llm.with_structured_output(RelevanceResult)
-        result: RelevanceResult = structured_llm.invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_msg),
-            ],
-            config={**config, "tags": config.get("tags", []) + ["crag_relevance_check", "hide_stream"]},
-        )
-        return {
-            "relevance_score": float(result.score),
-            "relevance_reason": result.reason,
-        }
-    except Exception as exc:
-        return {
-            "relevance_score": 6.0,
-            "relevance_reason": f"Evaluación por defecto (error en parser: {exc})",
-        }
+    return {"messages": [response], "response": response.content}
 
 
-def _route_after_search(state: CRAGState) -> str:
-    if not state.get("documents"):
-        return "format_evidence"
-    return "check_relevance"
+def build_agent_workflow(
+    search_tool: Any = None,
+    checkpointer: Any = None,
+    store: Any = None,
+) -> Any:
+    """Compila el grafo unificado CRAG: summarize -> agent_node -> tools -> check_relevance -> synthesize / rewrite."""
+    if search_tool is None:
+        from langchain_core.tools import tool
 
+        @tool
+        def search_tweets(query: str, **kwargs) -> str:
+            """Herramienta de busqueda de tweets por defecto."""
+            return "No se encontraron tweets relevantes para la busqueda."
 
-def _route_after_check(state: CRAGState, config: RunnableConfig) -> str:
-    score = state.get("relevance_score", 0.0)
-    attempts = state.get("search_attempts", 1)
-    threshold = config["configurable"].get("relevance_threshold", 5.0)
-    max_attempts = config["configurable"].get("max_attempts", 2)
+        search_tool = search_tweets
 
-    if score >= threshold or attempts >= max_attempts:
-        return "format_evidence"
-    return "rewrite_query"
+    builder = StateGraph(AgentState)
 
-
-def _format_evidence(state: CRAGState) -> dict:
-    docs = state.get("documents", [])
-    if not docs:
-        msg = "No se encontraron tweets relevantes para la búsqueda solicitada."
-        return {"response": msg, "final_evidence": msg}
-
-    serialized = "\n\n".join([_format_doc(d) for d in docs])
-    score = state.get("relevance_score")
-    if score is not None:
-        reason = state.get("relevance_reason") or ""
-        header = f"[METADATA CRAG: Relevancia {score}/10 | {reason}]\n\n"
-        serialized = header + serialized
-
-    return {"response": serialized, "final_evidence": serialized}
-
-
-def build_crag_workflow():
-    builder = StateGraph(CRAGState)
-
-    builder.add_node("rewrite_query", _rewrite_query)
-    builder.add_node("search_and_rerank", _search_and_rerank, retry_policy=_RETRY)
+    builder.add_node("maybe_summarize", _maybe_summarize)
+    builder.add_node("agent_node", _agent_node)
+    builder.add_node("tools", ToolNode([search_tool]))
     builder.add_node("check_relevance", _check_relevance)
-    builder.add_node("format_evidence", _format_evidence)
+    builder.add_node("rewrite_query", _rewrite_query)
+    builder.add_node("synthesize", _synthesize)
 
-    builder.add_edge(START, "rewrite_query")
-    builder.add_edge("rewrite_query", "search_and_rerank")
+    builder.add_edge(START, "maybe_summarize")
+    builder.add_edge("maybe_summarize", "agent_node")
     builder.add_conditional_edges(
-        "search_and_rerank",
-        _route_after_search,
-        ["check_relevance", "format_evidence"],
+        "agent_node",
+        tools_condition,
+        {"tools": "tools", END: END},
     )
+    builder.add_edge("tools", "check_relevance")
     builder.add_conditional_edges(
         "check_relevance",
         _route_after_check,
-        ["format_evidence", "rewrite_query"],
+        {
+            "synthesize": "synthesize",
+            "rewrite_query": "rewrite_query",
+        },
     )
-    builder.add_edge("format_evidence", END)
+    builder.add_edge("rewrite_query", "tools")
+    builder.add_edge("synthesize", END)
 
-    return builder.compile(checkpointer=False)
+    return builder.compile(checkpointer=checkpointer, store=store)

@@ -7,7 +7,16 @@ data "archive_file" "agent_package" {
     "tests/**",
     "__pycache__/**",
     "requirements.txt",
-    ".pytest_cache/**"
+    "pyproject.toml",
+    "uv.lock",
+    ".venv/**",
+    "venv/**",
+    "env/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    ".DS_Store",
+    ".env*",
+    ".dockerignore"
   ]
 }
 
@@ -20,7 +29,16 @@ data "archive_file" "pipeline_package" {
     "tests/**",
     "__pycache__/**",
     "requirements.txt",
-    ".pytest_cache/**"
+    "pyproject.toml",
+    "uv.lock",
+    ".venv/**",
+    "venv/**",
+    "env/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    ".DS_Store",
+    ".env*",
+    ".dockerignore"
   ]
 }
 
