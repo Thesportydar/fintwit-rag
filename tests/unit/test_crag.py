@@ -368,7 +368,7 @@ def test_agent_workflow_crag_correction_loop():
 
 
 def test_entrypoint_rate_limiting(monkeypatch):
-    """Valida que el middleware aplique cuota global para demo y permita bypass para admin."""
+    """Valida que el middleware aplique cuota global en DynamoDB para demo y permita bypass para admin."""
     import base64
     import json
 
@@ -381,8 +381,22 @@ def test_entrypoint_rate_limiting(monkeypatch):
     monkeypatch.setenv("ADMIN_EMAIL", "admin@fintwit.com")
     monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
 
-    # Limpiar timestamps previos en memoria
-    entrypoint._request_timestamps.clear()
+    # Mock DynamoDB table store
+    mock_db: dict[str, dict] = {}
+
+    class MockDynamoTable:
+        def get_item(self, Key, ConsistentRead=False):
+            pk = Key.get("PK")
+            item = mock_db.get(pk)
+            return {"Item": item} if item else {}
+
+        def put_item(self, Item):
+            pk = Item.get("PK")
+            mock_db[pk] = Item
+            return {}
+
+    mock_table = MockDynamoTable()
+    monkeypatch.setattr(entrypoint.rate_limiter, "_table", mock_table)
 
     client = TestClient(entrypoint.app)
 

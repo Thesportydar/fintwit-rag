@@ -17,6 +17,7 @@ class AppConfig:
     jina_rerank_model: str = "jina-reranker-v3"
     dynamodb_checkpoint_table: str = "fintwit-checkpoints"
     dynamodb_store_table: str = "fintwit-store"
+    dynamodb_rate_limit_table: str = "fintwit-rate-limits"
 
     # LLM Settings
     llm_temperature: float = 0.3
@@ -60,6 +61,7 @@ class AppConfig:
             jina_rerank_model=os.environ.get("JINA_RERANK_MODEL", cls.jina_rerank_model),
             dynamodb_checkpoint_table=os.environ.get("DYNAMODB_CHECKPOINT_TABLE", cls.dynamodb_checkpoint_table),
             dynamodb_store_table=os.environ.get("DYNAMODB_STORE_TABLE", cls.dynamodb_store_table),
+            dynamodb_rate_limit_table=os.environ.get("DYNAMODB_RATE_LIMIT_TABLE", cls.dynamodb_rate_limit_table),
             llm_temperature=float(os.environ.get("LLM_TEMPERATURE", cls.llm_temperature)),
             llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", cls.llm_max_tokens)),
             retriever_k=int(os.environ.get("RETRIEVER_K", cls.retriever_k)),

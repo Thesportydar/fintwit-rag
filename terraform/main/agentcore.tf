@@ -130,7 +130,9 @@ resource "aws_iam_role_policy" "agentcore_runtime_policy" {
           "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_checkpoint_table}",
           "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_checkpoint_table}/*",
           "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_store_table}",
-          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_store_table}/*"
+          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_store_table}/*",
+          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_rate_limit_table}",
+          "arn:aws:dynamodb:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_rate_limit_table}/*"
         ]
       }
     ]
@@ -182,6 +184,7 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     JINA_RERANK_MODEL         = var.jina_rerank_model
     DYNAMODB_CHECKPOINT_TABLE = var.dynamodb_checkpoint_table
     DYNAMODB_STORE_TABLE      = var.dynamodb_store_table
+    DYNAMODB_RATE_LIMIT_TABLE = var.dynamodb_rate_limit_table
     RETRIEVER_K               = tostring(var.retriever_k)
     RERANKER_TOP_N            = tostring(var.reranker_top_n)
     CRAG_MAX_ATTEMPTS         = tostring(var.crag_max_attempts)

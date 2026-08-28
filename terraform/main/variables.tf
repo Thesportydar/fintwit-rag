@@ -92,6 +92,13 @@ variable "dynamodb_store_table" {
   default     = "fintwit-store"
 }
 
+variable "dynamodb_rate_limit_table" {
+  description = "Name of the DynamoDB table for distributed rate limiting"
+  type        = string
+  default     = "fintwit-rate-limits"
+}
+
+
 variable "jina_embed_url" {
   description = "Jina embeddings endpoint"
   type        = string

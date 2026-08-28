@@ -18,6 +18,17 @@ output "dynamodb_store_table_arn" {
   description = "ARN of the LangGraph store DynamoDB table"
 }
 
+output "dynamodb_rate_limit_table_arn" {
+  value       = aws_dynamodb_table.rate_limits.arn
+  description = "ARN of the distributed rate limit DynamoDB table"
+}
+
+output "dynamodb_rate_limit_table" {
+  value       = aws_dynamodb_table.rate_limits.name
+  description = "Name of the distributed rate limit DynamoDB table"
+}
+
+
 output "frontend_bucket_name" {
   value       = aws_s3_bucket.frontend.id
   description = "The name of the S3 bucket hosting the frontend site"

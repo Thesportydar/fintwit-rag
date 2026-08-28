@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections import defaultdict
 from pathlib import Path
 
 from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
@@ -53,9 +52,86 @@ app = FastAPI(
 
 import base64
 import json
+from decimal import Decimal
 
-# Estructura in-memory para Rate Limiting (Sliding Window)
-_request_timestamps: dict[str, list[float]] = defaultdict(list)
+
+class DynamoDBRateLimiter:
+    """Rate limiter distribuido respaldado por Amazon DynamoDB con TTL automático."""
+
+    def __init__(self, table_name: str, region_name: str | None = None):
+        self.table_name = table_name
+        self.region_name = (
+            region_name or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+        )
+        self._dynamodb = None
+        self._table = None
+
+    @property
+    def table(self):
+        if self._table is None:
+            import boto3
+
+            aws_profile = os.environ.get("AWS_PROFILE")
+            session = (
+                boto3.Session(profile_name=aws_profile, region_name=self.region_name)
+                if aws_profile
+                else boto3.Session(region_name=self.region_name)
+            )
+            self._dynamodb = session.resource("dynamodb")
+            self._table = self._dynamodb.Table(self.table_name)
+        return self._table
+
+    def check_and_record(
+        self,
+        client_key: str,
+        max_requests: int,
+        window_seconds: int,
+    ) -> tuple[bool, int]:
+        """
+        Verifica y registra una solicitud en DynamoDB usando ventana deslizante con TTL.
+        Retorna:
+          (allowed: bool, retry_after: int)
+        """
+        now = time.time()
+        cutoff = now - window_seconds
+        ttl_time = int(now + window_seconds + 300)
+
+        try:
+            resp = self.table.get_item(
+                Key={"PK": f"RATE_LIMIT#{client_key}"},
+                ConsistentRead=True,
+            )
+            item = resp.get("Item", {})
+            raw_timestamps = item.get("timestamps", [])
+
+            active_timestamps = [Decimal(str(ts)) for ts in raw_timestamps if float(ts) > cutoff]
+
+            if len(active_timestamps) >= max_requests:
+                earliest = float(active_timestamps[0])
+                retry_after = max(1, int(window_seconds - (now - earliest)))
+                return False, retry_after
+
+            active_timestamps.append(Decimal(str(now)))
+            self.table.put_item(
+                Item={
+                    "PK": f"RATE_LIMIT#{client_key}",
+                    "timestamps": active_timestamps,
+                    "expires_at": ttl_time,
+                }
+            )
+            return True, 0
+
+        except Exception as exc:
+            logger.warning(
+                "Fallo al consultar DynamoDB rate limiter (%s): %s. Fail-open permitido.",
+                self.table_name,
+                exc,
+            )
+            return True, 0
+
+
+# Instancia central de DynamoDB Rate Limiter
+rate_limiter = DynamoDBRateLimiter(table_name=app_config.dynamodb_rate_limit_table)
 
 
 def _extract_jwt_claims(auth_header: str) -> dict:
@@ -76,7 +152,7 @@ def _extract_jwt_claims(auth_header: str) -> dict:
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Aplica Rate Limiting global para usuarios demo y permite bypass para admin."""
+    """Aplica Rate Limiting global en DynamoDB para usuarios demo y permite bypass para admin."""
     if request.url.path in ("/ping", "/health"):
         return await call_next(request)
 
@@ -93,33 +169,29 @@ async def rate_limit_middleware(request: Request, call_next):
     if (username and username.lower() == admin_target) or any(str(g).lower() == "admin" for g in groups):
         return await call_next(request)
 
-    # Cuota global compartida para todos los visitantes demo (previene ataques de rotacion de IP)
+    # Cuota global compartida en DynamoDB para todos los visitantes demo (previene ataques de rotacion de IP)
     client_key = "global_demo_pool"
+    allowed, retry_after = rate_limiter.check_and_record(
+        client_key=client_key,
+        max_requests=app_config.rate_limit_requests,
+        window_seconds=app_config.rate_limit_window_seconds,
+    )
 
-    now = time.time()
-    window = app_config.rate_limit_window_seconds
-    max_requests = app_config.rate_limit_requests
-
-    timestamps = [ts for ts in _request_timestamps[client_key] if now - ts < window]
-    _request_timestamps[client_key] = timestamps
-
-    if len(timestamps) >= max_requests:
-        retry_after = int(window - (now - timestamps[0]))
+    if not allowed:
         logger.warning(
-            "Rate limit global demo excedido: %d solicitudes en %d segundos",
-            len(timestamps),
-            window,
+            "Rate limit global demo excedido en DynamoDB: %d solicitudes permitidas cada %d segundos.",
+            app_config.rate_limit_requests,
+            app_config.rate_limit_window_seconds,
         )
         return JSONResponse(
             status_code=429,
             content={
                 "error": "Rate limit exceeded",
-                "detail": f"Limite global de {max_requests} consultas cada {window // 60} minutos excedido. Por favor intenta mas tarde.",
-                "retry_after_seconds": max(1, retry_after),
+                "detail": f"Limite global de {app_config.rate_limit_requests} consultas cada {app_config.rate_limit_window_seconds // 60} minutos excedido. Por favor intenta mas tarde.",
+                "retry_after_seconds": retry_after,
             },
         )
 
-    _request_timestamps[client_key].append(now)
     return await call_next(request)
 
 

@@ -44,6 +44,13 @@ variable "dynamodb_store_table" {
   default     = "fintwit-store"
 }
 
+variable "dynamodb_rate_limit_table" {
+  description = "Name of the DynamoDB table for distributed rate limiting"
+  type        = string
+  default     = "fintwit-rate-limits"
+}
+
+
 variable "frontend_domain" {
   description = "The custom domain for the frontend (e.g., www.example.com)"
   type        = string
