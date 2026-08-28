@@ -384,56 +384,6 @@ export function Claude({
 }
 
 const ChatMessage = () => {
-  const hasText = useAuiState((state) =>
-    state.message.content.some(
-      (part) => part.type === "text" && part.text.trim().length > 0,
-    ),
-  );
-  const hasRenderableContent = useAuiState((state) =>
-    state.message.content.some((part) => {
-      if (part.type === "text") return part.text.trim().length > 0;
-      return (
-        part.type === "reasoning" ||
-        part.type === "tool-call" ||
-        part.type === "image"
-      );
-    }),
-  );
-
-  const isDuplicate = useAuiState((state) => {
-    if (state.message.role !== "assistant") return false;
-    const messages = state.thread.messages;
-    const currentIndex = messages.findIndex((m) => m.id === state.message.id);
-    if (currentIndex <= 0) return false;
-
-    // Extract text content of current message
-    const currentText = state.message.content
-      .filter((p) => p.type === "text")
-      .map((p: any) => p.text)
-      .join("")
-      .trim();
-    if (!currentText) return false;
-
-    // Check if any prior assistant message in the same turn has identical non-empty text
-    for (let i = currentIndex - 1; i >= 0; i--) {
-      const prev = messages[i];
-      if (prev.role === "user") break;
-      if (prev.role === "assistant") {
-        const prevText = prev.content
-          .filter((p) => p.type === "text")
-          .map((p: any) => p.text)
-          .join("")
-          .trim();
-        if (prevText === currentText) {
-          return true;
-        }
-      }
-    }
-    return false;
-  });
-
-  if (!hasRenderableContent || isDuplicate) return null;
-
   return (
     <MessagePrimitive.Root className="group relative mx-auto my-3 block w-full max-w-3xl">
       <AuiIf condition={(state) => state.message.role === "user"}>
@@ -454,47 +404,41 @@ const ChatMessage = () => {
       </AuiIf>
 
       <AuiIf condition={(state) => state.message.role === "assistant"}>
-        <div className="relative mb-14 font-serif">
+        <div className="relative mb-8 font-serif">
           <div className="relative leading-[1.75rem]">
             <div className="grid grid-cols-1 gap-2.5">
               <div className="whitespace-normal px-2 pr-8 font-serif text-[15px] text-[#1a1a18] dark:text-[#f1efe8]">
-                {hasRenderableContent && (
-                  <MessagePrimitive.Parts
-                    components={{
-                      ChainOfThought: ClaudeChainOfThought,
-                      Text: MarkdownText,
-                    }}
-                  />
-                )}
+                <MessagePrimitive.Parts
+                  components={{
+                    ChainOfThought: ClaudeChainOfThought,
+                    Text: MarkdownText,
+                  }}
+                />
               </div>
             </div>
           </div>
 
-          {hasText && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0">
-              <ActionBarPrimitive.Root
-                autohide="not-last"
-                className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
-              >
-                <div className="flex items-center text-[#6b6a68] dark:text-[#9a9893] font-sans">
-                  <ActionBarPrimitive.Copy className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                    <ClipboardIcon height={18} width={18} />
-                  </ActionBarPrimitive.Copy>
-                  <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                    <ThumbsUp height={14} width={14} />
-                  </ActionBarPrimitive.FeedbackPositive>
-                  <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                    <ThumbsDown height={14} width={14} />
-                  </ActionBarPrimitive.FeedbackNegative>
-                </div>
-                <AuiIf condition={(state) => state.message.isLast}>
-                  <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
-                    Fintwit-RAG Bot. Datos históricos e interpretaciones sujetas a validación.
-                  </p>
-                </AuiIf>
-              </ActionBarPrimitive.Root>
+          <ActionBarPrimitive.Root
+            autohide="not-last"
+            className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
+          >
+            <div className="flex items-center text-[#6b6a68] dark:text-[#9a9893] font-sans">
+              <ActionBarPrimitive.Copy className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                <ClipboardIcon height={18} width={18} />
+              </ActionBarPrimitive.Copy>
+              <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                <ThumbsUp height={14} width={14} />
+              </ActionBarPrimitive.FeedbackPositive>
+              <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                <ThumbsDown height={14} width={14} />
+              </ActionBarPrimitive.FeedbackNegative>
             </div>
-          )}
+            <AuiIf condition={(state) => state.message.isLast}>
+              <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
+                Fintwit-RAG Bot. Datos históricos e interpretaciones sujetas a validación.
+              </p>
+            </AuiIf>
+          </ActionBarPrimitive.Root>
         </div>
       </AuiIf>
     </MessagePrimitive.Root>

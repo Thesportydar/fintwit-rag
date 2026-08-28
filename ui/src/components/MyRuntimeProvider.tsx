@@ -44,51 +44,11 @@ export function useMyThreads() {
   return ctx;
 }
 
-function deduplicateMessages(messages: ThreadMessage[]): ThreadMessage[] {
-  const uniqueMessages: ThreadMessage[] = [];
-  const seenIds = new Set<string>();
-
-  for (const m of messages) {
-    if (seenIds.has(m.id)) continue;
-    seenIds.add(m.id);
-
-    if (m.role === "assistant") {
-      const mText = m.content
-        ?.filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
-        .join("")
-        .trim();
-
-      if (mText) {
-        const lastMsg = uniqueMessages[uniqueMessages.length - 1];
-        if (lastMsg && lastMsg.role === "assistant") {
-          const lastText = lastMsg.content
-            ?.filter((p: any) => p.type === "text")
-            .map((p: any) => p.text)
-            .join("")
-            .trim();
-          if (lastText === mText) {
-            continue;
-          }
-        }
-      }
-    }
-    uniqueMessages.push(m);
-  }
-  return uniqueMessages;
-}
-
 function loadSavedThreads(): Record<string, { id: string; messages: ThreadMessage[] }> {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      for (const key of Object.keys(parsed)) {
-        if (parsed[key]?.messages) {
-          parsed[key].messages = deduplicateMessages(parsed[key].messages);
-        }
-      }
-      return parsed;
+      return JSON.parse(saved);
     }
   } catch (err) {
     console.warn("Failed to load threads from localStorage", err);
@@ -350,10 +310,7 @@ function SingleThreadRuntime({
         } else {
           threadData.messages.push(message);
         }
-        savedMap[threadId] = {
-          ...threadData,
-          messages: deduplicateMessages(threadData.messages),
-        };
+        savedMap[threadId] = threadData;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(savedMap));
         } catch (e) {
@@ -378,10 +335,7 @@ function SingleThreadRuntime({
         } else {
           threadData.messages.push(message);
         }
-        savedMap[threadId] = {
-          ...threadData,
-          messages: deduplicateMessages(threadData.messages),
-        };
+        savedMap[threadId] = threadData;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(savedMap));
         } catch (e) {
