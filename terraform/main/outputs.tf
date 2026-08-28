@@ -97,3 +97,8 @@ output "cognito_demo_email" {
   value       = "demo@fintwit.com"
   description = "Initial demo user email for testing and portfolio access"
 }
+
+output "cognito_admin_email" {
+  value       = var.cognito_admin_email
+  description = "Admin user email for local development with unlimited rate limit"
+}

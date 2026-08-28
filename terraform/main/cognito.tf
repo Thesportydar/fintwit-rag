@@ -60,3 +60,17 @@ resource "aws_cognito_user" "demo_user" {
     email_verified = "true"
   }
 }
+
+# Usuario administrador para desarrollo local (sin rate limit)
+resource "aws_cognito_user" "admin_user" {
+  user_pool_id = aws_cognito_user_pool.pool.id
+  username     = var.cognito_admin_email
+  password     = var.cognito_admin_password
+
+  message_action = "SUPPRESS"
+
+  attributes = {
+    email          = var.cognito_admin_email
+    email_verified = "true"
+  }
+}

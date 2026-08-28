@@ -167,3 +167,64 @@ variable "cognito_demo_password" {
   sensitive   = true
   default     = "FinTwit2026!"
 }
+
+variable "cognito_admin_email" {
+  description = "Email del usuario administrador para desarrollo local"
+  type        = string
+  default     = "admin@fintwit.com"
+}
+
+variable "cognito_admin_password" {
+  description = "Contraseña para el usuario administrador de Cognito"
+  type        = string
+  sensitive   = true
+  default     = "FinTwitAdmin2026!"
+}
+
+variable "retriever_k" {
+  description = "Number of documents to retrieve before reranking"
+  type        = number
+  default     = 50
+}
+
+variable "reranker_top_n" {
+  description = "Number of top documents to keep after reranking"
+  type        = number
+  default     = 5
+}
+
+variable "crag_max_attempts" {
+  description = "Maximum CRAG search attempts"
+  type        = number
+  default     = 2
+}
+
+variable "crag_relevance_threshold" {
+  description = "Relevance threshold score (0-10) for CRAG evaluation"
+  type        = number
+  default     = 5.0
+}
+
+variable "memory_token_limit" {
+  description = "Token limit before triggering summarization"
+  type        = number
+  default     = 4000
+}
+
+variable "memory_keep_messages" {
+  description = "Number of recent messages to keep uncompressed"
+  type        = number
+  default     = 10
+}
+
+variable "rate_limit_requests" {
+  description = "Maximum requests allowed per rate limit window"
+  type        = number
+  default     = 5
+}
+
+variable "rate_limit_window_seconds" {
+  description = "Rate limit sliding window in seconds"
+  type        = number
+  default     = 1800
+}

@@ -39,7 +39,8 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { MarkdownText } from "./markdown-text";
-import type { ThreadItem, FilterSettings } from "./my-assistant";
+import type { FilterSettings } from "./my-assistant";
+import type { ThreadItem } from "./MyRuntimeProvider";
 
 const SUGGESTIONS = [
   "Que opina @elonmusk sobre el precio de Tesla y Bitcoin?",
@@ -399,6 +400,40 @@ const ChatMessage = () => {
     }),
   );
 
+  const isDuplicate = useAuiState((state) => {
+    if (state.message.role !== "assistant") return false;
+    const messages = state.thread.messages;
+    const currentIndex = messages.findIndex((m) => m.id === state.message.id);
+    if (currentIndex <= 0) return false;
+
+    // Extract text content of current message
+    const currentText = state.message.content
+      .filter((p) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("")
+      .trim();
+    if (!currentText) return false;
+
+    // Check if any prior assistant message in the same turn has identical non-empty text
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const prev = messages[i];
+      if (prev.role === "user") break;
+      if (prev.role === "assistant") {
+        const prevText = prev.content
+          .filter((p) => p.type === "text")
+          .map((p: any) => p.text)
+          .join("")
+          .trim();
+        if (prevText === currentText) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+
+  if (!hasRenderableContent || isDuplicate) return null;
+
   return (
     <MessagePrimitive.Root className="group relative mx-auto my-3 block w-full max-w-3xl">
       <AuiIf condition={(state) => state.message.role === "user"}>
@@ -491,6 +526,7 @@ const ClaudeToolCall: ToolCallMessagePartComponent = ({
   status,
   toolName,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const statusLabel =
     status.type === "running"
       ? "Ejecutando"
@@ -502,55 +538,58 @@ const ClaudeToolCall: ToolCallMessagePartComponent = ({
 
   return (
     <div className="rounded-2xl border border-[#00000012] bg-white/80 shadow-sm dark:border-[#6c6a6040] dark:bg-[#1f1e1b] font-sans">
-      <div className="flex items-center justify-between gap-3 border-b border-[#00000010] px-4 py-2.5 dark:border-[#6c6a6030]">
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl"
+      >
         <div className="flex items-center gap-2 text-xs font-semibold text-[#1a1a18] dark:text-[#f1efe8]">
+          {isExpanded ? (
+            <ChevronDownIcon height={14} width={14} className="text-[#8a8985]" />
+          ) : (
+            <ChevronRightIcon height={14} width={14} className="text-[#8a8985]" />
+          )}
           <MixerHorizontalIcon height={14} width={14} />
           <span>{toolName}</span>
         </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8a8985] dark:text-[#9a9893]">
           {statusLabel}
         </span>
-      </div>
+      </button>
 
-      <div className="space-y-3 px-4 py-3">
-        <div>
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8a8985] dark:text-[#9a9893]">
-            Parámetros
-          </div>
-          <pre className="overflow-x-auto rounded-xl bg-[#f8f7f3] p-3 text-xs leading-5 text-[#4e4c48] dark:bg-[#2b2a27] dark:text-[#d8d5cb]">
-            {argsText}
-          </pre>
-        </div>
-
-        {result !== undefined && (
+      {isExpanded && (
+        <div className="space-y-3 border-t border-[#00000010] px-4 py-3 dark:border-[#6c6a6030]">
           <div>
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8a8985] dark:text-[#9a9893]">
-              Resultados
+              Parámetros
             </div>
             <pre className="overflow-x-auto rounded-xl bg-[#f8f7f3] p-3 text-xs leading-5 text-[#4e4c48] dark:bg-[#2b2a27] dark:text-[#d8d5cb]">
-              {formatToolValue(result)}
+              {argsText}
             </pre>
           </div>
-        )}
-      </div>
+
+          {result !== undefined && (
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8a8985] dark:text-[#9a9893]">
+                Resultados
+              </div>
+              <pre className="overflow-x-auto rounded-xl bg-[#f8f7f3] p-3 text-xs leading-5 text-[#4e4c48] dark:bg-[#2b2a27] dark:text-[#d8d5cb]">
+                {formatToolValue(result)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
 const ClaudeChainOfThought: FC = () => {
-  const aui = useAui();
-  const collapsed = useAuiState((state) => state.chainOfThought.collapsed);
-  const [isUsingDefaultOpenState, setIsUsingDefaultOpenState] = useState(true);
-  const isExpanded = isUsingDefaultOpenState ? true : !collapsed;
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const onToggle = useCallback(() => {
-    if (isUsingDefaultOpenState) {
-      setIsUsingDefaultOpenState(false);
-      return;
-    }
-
-    aui.chainOfThought().setCollapsed(!collapsed);
-  }, [aui, collapsed, isUsingDefaultOpenState]);
+    setIsExpanded(prev => !prev);
+  }, []);
 
   return (
     <ChainOfThoughtPrimitive.Root className="mb-4 overflow-hidden rounded-2xl border border-[#00000012] bg-[#ede9dc]/60 dark:border-[#6c6a6040] dark:bg-[#242320] font-sans">

@@ -39,9 +39,10 @@ class AppConfig:
     langsmith_api_key: str | None = None
     langsmith_project: str = "fintwit-rag"
 
-    # Rate Limiting
+    # Rate Limiting & Admin Bypass
     rate_limit_requests: int = 5
     rate_limit_window_seconds: int = 1800
+    admin_email: str = "admin@fintwit.com"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -72,4 +73,5 @@ class AppConfig:
             langsmith_project=os.environ.get("LANGSMITH_PROJECT", cls.langsmith_project),
             rate_limit_requests=int(os.environ.get("RATE_LIMIT_REQUESTS", cls.rate_limit_requests)),
             rate_limit_window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", cls.rate_limit_window_seconds)),
+            admin_email=os.environ.get("ADMIN_EMAIL", cls.admin_email),
         )

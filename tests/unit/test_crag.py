@@ -402,13 +402,17 @@ def test_agent_workflow_crag_correction_loop():
 
 
 def test_entrypoint_rate_limiting(monkeypatch):
-    """Valida que el middleware de rate limiting permita hasta N requests y luego retorne HTTP 429."""
+    """Valida que el middleware aplique cuota global para demo y permita bypass para admin."""
+    import base64
+    import json
+
     from agent.src import entrypoint
     from agent.src.config import AppConfig
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("RATE_LIMIT_REQUESTS", "3")
     monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "60")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@fintwit.com")
     monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
 
     # Limpiar timestamps previos en memoria
@@ -421,10 +425,18 @@ def test_entrypoint_rate_limiting(monkeypatch):
         resp = client.get("/ping")
         assert resp.status_code == 200
 
-    # Invocaciones estándar (3 permitidas)
+    # Crear token demo y token admin simulados
+    demo_payload = base64.urlsafe_b64encode(json.dumps({"username": "demo@fintwit.com"}).encode()).decode()
+    demo_auth = f"Bearer header.{demo_payload}.sig"
+
+    admin_payload = base64.urlsafe_b64encode(json.dumps({"username": "admin@fintwit.com"}).encode()).decode()
+    admin_auth = f"Bearer header.{admin_payload}.sig"
+
+    # Invocaciones demo estándar (3 permitidas)
     for i in range(3):
         resp = client.post(
             "/invocations",
+            headers={"Authorization": demo_auth},
             json={
                 "threadId": "test-rl",
                 "runId": f"run-{i}",
@@ -433,9 +445,10 @@ def test_entrypoint_rate_limiting(monkeypatch):
         )
         assert resp.status_code != 429, f"El request {i+1} no debio ser bloqueado"
 
-    # 4to request debe ser bloqueado con HTTP 429
+    # 4to request demo debe ser bloqueado con HTTP 429
     blocked_resp = client.post(
         "/invocations",
+        headers={"Authorization": demo_auth},
         json={
             "threadId": "test-rl",
             "runId": "run-blocked",
@@ -446,3 +459,16 @@ def test_entrypoint_rate_limiting(monkeypatch):
     data = blocked_resp.json()
     assert data["error"] == "Rate limit exceeded"
     assert "retry_after_seconds" in data
+
+    # Peticiones admin deben pasar ilimitadamente (bypass)
+    for i in range(5):
+        admin_resp = client.post(
+            "/invocations",
+            headers={"Authorization": admin_auth},
+            json={
+                "threadId": "test-admin",
+                "runId": f"admin-run-{i}",
+                "messages": [{"role": "user", "content": "consulta admin", "id": f"admin-msg-{i}"}],
+            },
+        )
+        assert admin_resp.status_code != 429, f"El request admin {i+1} debio tener bypass de rate limit"

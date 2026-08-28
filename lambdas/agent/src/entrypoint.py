@@ -51,20 +51,50 @@ app = FastAPI(
     version="1.0.0",
 )
 
+import base64
+import json
+
 # Estructura in-memory para Rate Limiting (Sliding Window)
 _request_timestamps: dict[str, list[float]] = defaultdict(list)
 
 
+def _extract_jwt_claims(auth_header: str) -> dict:
+    """Extrae claims del payload JWT sin verificar la firma (Bedrock AgentCore Authorizer ya la valido)."""
+    if not auth_header.startswith("Bearer "):
+        return {}
+    token = auth_header[7:].strip()
+    parts = token.split(".")
+    if len(parts) < 2:
+        return {}
+    try:
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload_bytes = base64.urlsafe_b64decode(payload_b64.encode("utf-8"))
+        return json.loads(payload_bytes)
+    except Exception:
+        return {}
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Aplica Rate Limiting (Sliding Window) por cliente excluyendo endpoints de health check."""
+    """Aplica Rate Limiting global para usuarios demo y permite bypass para admin."""
     if request.url.path in ("/ping", "/health"):
         return await call_next(request)
 
-    forwarded = request.headers.get("x-forwarded-for")
-    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
     auth_header = request.headers.get("authorization", "")
-    client_key = auth_header[:32] if auth_header else client_ip
+    claims = _extract_jwt_claims(auth_header)
+
+    username = str(claims.get("username") or claims.get("cognito:username") or claims.get("email") or "")
+    groups = claims.get("cognito:groups") or []
+    if not isinstance(groups, list):
+        groups = [groups]
+
+    # Bypass total de rate limit para usuario administrador
+    admin_target = app_config.admin_email.lower()
+    if (username and username.lower() == admin_target) or any(str(g).lower() == "admin" for g in groups):
+        return await call_next(request)
+
+    # Cuota global compartida para todos los visitantes demo (previene ataques de rotacion de IP)
+    client_key = "global_demo_pool"
 
     now = time.time()
     window = app_config.rate_limit_window_seconds
@@ -76,8 +106,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if len(timestamps) >= max_requests:
         retry_after = int(window - (now - timestamps[0]))
         logger.warning(
-            "Rate limit excedido para cliente '%s': %d solicitudes en %d segundos",
-            client_key,
+            "Rate limit global demo excedido: %d solicitudes en %d segundos",
             len(timestamps),
             window,
         )
@@ -85,7 +114,7 @@ async def rate_limit_middleware(request: Request, call_next):
             status_code=429,
             content={
                 "error": "Rate limit exceeded",
-                "detail": f"Limite de {max_requests} consultas cada {window // 60} minutos excedido. Por favor intenta mas tarde.",
+                "detail": f"Limite global de {max_requests} consultas cada {window // 60} minutos excedido. Por favor intenta mas tarde.",
                 "retry_after_seconds": max(1, retry_after),
             },
         )

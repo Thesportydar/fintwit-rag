@@ -143,7 +143,7 @@ resource "aws_iam_role_policy" "agentcore_runtime_policy" {
 
 resource "aws_bedrockagentcore_agent_runtime" "agent" {
   agent_runtime_name = replace("${var.project}_${var.env}_agent", "-", "_")
-  description        = "FinTwit LangGraph RAG Agent Runtime"
+  description        = "FinTwit LangGraph RAG Agent Runtime v4"
   role_arn           = aws_iam_role.agentcore_runtime_role.arn
 
   agent_runtime_artifact {
@@ -182,14 +182,15 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     JINA_RERANK_MODEL         = var.jina_rerank_model
     DYNAMODB_CHECKPOINT_TABLE = var.dynamodb_checkpoint_table
     DYNAMODB_STORE_TABLE      = var.dynamodb_store_table
-    RETRIEVER_K               = "5"
-    RERANKER_TOP_N            = "3"
-    CRAG_MAX_ATTEMPTS         = "2"
-    CRAG_RELEVANCE_THRESHOLD  = "0.6"
-    MEMORY_TOKEN_LIMIT        = "3000"
-    MEMORY_KEEP_MESSAGES      = "6"
-    RATE_LIMIT_REQUESTS       = "5"
-    RATE_LIMIT_WINDOW_SECONDS = "1800"
+    RETRIEVER_K               = tostring(var.retriever_k)
+    RERANKER_TOP_N            = tostring(var.reranker_top_n)
+    CRAG_MAX_ATTEMPTS         = tostring(var.crag_max_attempts)
+    CRAG_RELEVANCE_THRESHOLD  = tostring(var.crag_relevance_threshold)
+    MEMORY_TOKEN_LIMIT        = tostring(var.memory_token_limit)
+    MEMORY_KEEP_MESSAGES      = tostring(var.memory_keep_messages)
+    RATE_LIMIT_REQUESTS       = tostring(var.rate_limit_requests)
+    RATE_LIMIT_WINDOW_SECONDS = tostring(var.rate_limit_window_seconds)
+    ADMIN_EMAIL               = var.cognito_admin_email
     LANGSMITH_TRACING         = var.langsmith_api_key != "" ? "true" : "false"
     LANGSMITH_API_KEY         = var.langsmith_api_key
     LANGSMITH_PROJECT         = var.langsmith_project

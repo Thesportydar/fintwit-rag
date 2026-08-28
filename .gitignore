@@ -7,6 +7,7 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+*.log
 crash.log
 crash.*.log
 *.tfvars
@@ -53,3 +54,5 @@ ui/npm-debug.log*
 ui/yarn-debug.log*
 ui/yarn-error.log*
 ui/pnpm-debug.log*
+frontend/
+assistant-ui/

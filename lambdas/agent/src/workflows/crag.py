@@ -81,7 +81,11 @@ def _maybe_summarize(state: AgentState, config: RunnableConfig) -> dict:
             SystemMessage(content=_SUMMARIZE_PROMPT),
             HumanMessage(content=f"Resume esta conversacion:\n\n{history_text}"),
         ],
-        config={**config, "tags": config.get("tags", []) + ["summarize", "hide_stream"]},
+        config={
+            **config,
+            "tags": config.get("tags", []) + ["summarize", "hide_stream"],
+            "metadata": {**config.get("metadata", {}), "emit-messages": False, "emit-tool-calls": False},
+        },
     )
 
     summary_content = summary_response.content
@@ -180,12 +184,17 @@ def _check_relevance(state: AgentState, config: RunnableConfig) -> dict:
 
     try:
         structured_llm = llm.with_structured_output(RelevanceResult)
+        # Excluir callbacks para que el JSON de evaluacion interna no se emita al stream SSE del usuario
         result: RelevanceResult = structured_llm.invoke(
             [
                 SystemMessage(content=_RELEVANCE_CHECK_PROMPT),
                 HumanMessage(content=eval_msg),
             ],
-            config={**config, "tags": config.get("tags", []) + ["crag_relevance_check", "hide_stream"]},
+            config={
+                **config,
+                "tags": ["crag_relevance_check"],
+                "metadata": {**config.get("metadata", {}), "emit-messages": False, "emit-tool-calls": False},
+            },
         )
         return {
             "relevance_score": float(result.score),
@@ -259,7 +268,11 @@ def _rewrite_query(state: AgentState, config: RunnableConfig) -> dict:
             SystemMessage(content=_QUERY_REWRITE_PROMPT),
             HumanMessage(content=user_msg),
         ],
-        config={**config, "tags": config.get("tags", []) + ["crag_rewrite", "hide_stream"]},
+        config={
+            **config,
+            "tags": ["crag_rewrite"],
+            "metadata": {**config.get("metadata", {}), "emit-messages": False, "emit-tool-calls": False},
+        },
     )
 
     content = response.content
@@ -312,6 +325,7 @@ def _synthesize(state: AgentState, config: RunnableConfig) -> dict:
         synth_messages,
         config={**config, "tags": config.get("tags", []) + ["agent_synthesis"]},
     )
+
     return {"messages": [response], "response": response.content}
 
 
