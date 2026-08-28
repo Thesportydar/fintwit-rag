@@ -254,40 +254,6 @@ def test_agent_app_configuration_merge_and_invoke():
     assert mock_graph.invoke.called
 
 
-def test_lambda_handler_happy_path(monkeypatch):
-    """Valida que lambda_handler procese el evento y retorne la respuesta esperada."""
-    import json
-
-    from agent.src.handler import lambda_handler
-
-    mock_invoke = MagicMock(
-        return_value={
-            "messages": [AIMessage(content="Hola desde FinTwit!")],
-            "response": "Hola desde FinTwit!",
-        }
-    )
-    monkeypatch.setattr("agent.src.handler.agent_app.invoke", mock_invoke)
-
-    event = {
-        "body": json.dumps(
-            {
-                "messages": [{"role": "user", "content": "Hola"}],
-                "thread_id": "thread_abc",
-                "extra_configurable": {"foo": "bar"},
-            }
-        )
-    }
-    resp = lambda_handler(event, None)
-    assert resp["statusCode"] == 200
-    body = json.loads(resp["body"])
-    assert body["response"] == "Hola desde FinTwit!"
-    mock_invoke.assert_called_once_with(
-        messages=[{"role": "user", "content": "Hola"}],
-        thread_id="thread_abc",
-        extra_configurable={"foo": "bar"},
-    )
-
-
 def test_agentcore_entrypoint_invocation(monkeypatch):
     """Valida que agent_invocation procese el evento y llame a agent_app.invoke."""
     from agent.src import entrypoint

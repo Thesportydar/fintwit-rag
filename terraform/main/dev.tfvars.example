@@ -26,8 +26,6 @@ enrichment_model   = "gpt-4o-mini"
 hosted_zone_name   = "tudominio.com"
 route53_role_arn   = "arn:aws:iam::<TU_ACCOUNT_ID>:role/SharedRoute53Role"
 
-apigw_domain_name  = "api.tudominio.com"
-
 # LangSmith Tracing (Opcional)
 langsmith_api_key  = ""
 langsmith_project  = "fintwit-rag-dev"

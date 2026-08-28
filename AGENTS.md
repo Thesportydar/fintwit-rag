@@ -43,7 +43,6 @@ lambdas/
       config.py          # AppConfig (Single Source of Truth para variables de entorno)
       embeddings.py      # Clientes Jina Embeddings y Jina Rerank Compressor
       entrypoint.py      # Servidor ASGI FastAPI con endpoints /ping y /invocations (AG-UI)
-      handler.py         # Adaptador Lambda REST legacy (en sunset)
       llm.py             # Fabrica unificada de LLM (OpenAI / Bedrock Converse)
       vector_store.py    # Filtros y Tool de busqueda hibrida en Qdrant
       prompts/           # Prompts del sistema (agent, synthesize, summarize, etc.)

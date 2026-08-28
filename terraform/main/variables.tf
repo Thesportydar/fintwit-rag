@@ -131,10 +131,6 @@ variable "route53_role_arn" {
   type        = string
 }
 
-variable "apigw_domain_name" {
-  description = "The domain name for the HTTP API Gateway"
-  type        = string
-}
 
 variable "langsmith_api_key" {
   description = "API key for LangSmith tracing"
