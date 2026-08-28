@@ -418,27 +418,29 @@ const ChatMessage = () => {
             </div>
           </div>
 
-          <ActionBarPrimitive.Root
-            autohide="not-last"
-            className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
-          >
-            <div className="flex items-center text-[#6b6a68] dark:text-[#9a9893] font-sans">
-              <ActionBarPrimitive.Copy className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                <ClipboardIcon height={18} width={18} />
-              </ActionBarPrimitive.Copy>
-              <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                <ThumbsUp height={14} width={14} />
-              </ActionBarPrimitive.FeedbackPositive>
-              <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
-                <ThumbsDown height={14} width={14} />
-              </ActionBarPrimitive.FeedbackNegative>
-            </div>
-            <AuiIf condition={(state) => state.message.isLast}>
-              <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
-                Fintwit-RAG Bot. Datos históricos e interpretaciones sujetas a validación.
-              </p>
-            </AuiIf>
-          </ActionBarPrimitive.Root>
+          <AuiIf condition={(state) => state.message.content.some((p) => p.type === "text" && p.text.trim().length > 0)}>
+            <ActionBarPrimitive.Root
+              autohide="not-last"
+              className="pointer-events-auto flex w-full translate-y-full flex-col items-end px-2 pt-2 transition"
+            >
+              <div className="flex items-center text-[#6b6a68] dark:text-[#9a9893] font-sans">
+                <ActionBarPrimitive.Copy className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                  <ClipboardIcon height={18} width={18} />
+                </ActionBarPrimitive.Copy>
+                <ActionBarPrimitive.FeedbackPositive className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                  <ThumbsUp height={14} width={14} />
+                </ActionBarPrimitive.FeedbackPositive>
+                <ActionBarPrimitive.FeedbackNegative className="flex h-8 w-8 items-center justify-center rounded-md transition duration-300 ease-[cubic-bezier(0.165,0.85,0.45,1)] hover:bg-transparent active:scale-95 hover:text-[#eee]">
+                  <ThumbsDown height={14} width={14} />
+                </ActionBarPrimitive.FeedbackNegative>
+              </div>
+              <AuiIf condition={(state) => state.message.isLast}>
+                <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
+                  Fintwit-RAG Bot. Datos históricos e interpretaciones sujetas a validación.
+                </p>
+              </AuiIf>
+            </ActionBarPrimitive.Root>
+          </AuiIf>
         </div>
       </AuiIf>
     </MessagePrimitive.Root>
