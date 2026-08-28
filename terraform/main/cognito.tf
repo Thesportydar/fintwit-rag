@@ -74,3 +74,16 @@ resource "aws_cognito_user" "admin_user" {
     email_verified = "true"
   }
 }
+
+# Grupo admin para bypass garantizado en AccessToken JWT
+resource "aws_cognito_user_group" "admin" {
+  name         = "admin"
+  user_pool_id = aws_cognito_user_pool.pool.id
+  description  = "Admin group with rate-limit bypass"
+}
+
+resource "aws_cognito_user_in_group" "admin_user" {
+  user_pool_id = aws_cognito_user_pool.pool.id
+  group_name   = aws_cognito_user_group.admin.name
+  username     = aws_cognito_user.admin_user.username
+}

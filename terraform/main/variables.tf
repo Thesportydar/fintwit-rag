@@ -223,7 +223,7 @@ variable "memory_keep_messages" {
 variable "rate_limit_requests" {
   description = "Maximum requests allowed per rate limit window"
   type        = number
-  default     = 5
+  default     = 60
 }
 
 variable "rate_limit_window_seconds" {
