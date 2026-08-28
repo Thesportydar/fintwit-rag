@@ -41,7 +41,11 @@ jobs:
       - name: Build application
         run: pnpm run build
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_AWS_REGION: ${{ vars.VITE_AWS_REGION }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
+          VITE_COGNITO_DEMO_EMAIL: ${{ vars.VITE_COGNITO_DEMO_EMAIL }}
+          VITE_COGNITO_DEMO_PASSWORD: ${{ vars.VITE_COGNITO_DEMO_PASSWORD }}
+          VITE_AGENTCORE_RUNTIME_URL: ${{ vars.VITE_AGENTCORE_RUNTIME_URL }}
 
       - name: Deploy to S3
         run: aws s3 sync --delete ./dist/ s3://${{ vars.S3_BUCKET_NAME }}/
