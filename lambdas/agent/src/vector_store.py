@@ -133,7 +133,8 @@ def format_tweet_doc(d: Document) -> str:
     handle = meta.get("user_handle", "unknown")
     timestamp = meta.get("tweet_timestamp", "")
     date = timestamp[:10] if timestamp else "unknown"
-    return f"<<< TWEET >>>\nautor: @{handle}\nfecha: {date}\ncontenido: {d.page_content}\n<<< /TWEET >>>"
+    safe_content = d.page_content.replace("<tweet", "&lt;tweet").replace("</tweet>", "&lt;/tweet&gt;")
+    return f'<tweet author="@{handle}" date="{date}">{safe_content}</tweet>'
 
 
 def create_search_tweets_tool(

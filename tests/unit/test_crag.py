@@ -7,6 +7,7 @@ from agent.src.workflows.crag import (
     _rewrite_query,
     build_agent_workflow,
 )
+from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from langchain_core.tools import tool
 
@@ -46,8 +47,8 @@ def test_create_search_tweets_tool_execution():
     assert search_tool.name == "search_tweets"
 
     result = search_tool.invoke({"query": "GGAL balance", "tickers": ["GGAL"]})
-    assert "<<< TWEET >>>" in result
-    assert "@bull_market" in result
+    assert '<tweet author="@bull_market"' in result
+    assert "</tweet>" in result
     assert "ganancias record" in result
 
 
@@ -452,3 +453,85 @@ def test_entrypoint_rate_limiting(monkeypatch):
             },
         )
         assert admin_resp.status_code != 429, f"El request admin {i+1} debio tener bypass de rate limit"
+
+
+def test_entrypoint_input_length_limit(monkeypatch):
+    """Verifica que mensajes de usuario mayores a max_input_chars sean rechazados con HTTP 400."""
+    from agent.src import entrypoint
+    from agent.src.config import AppConfig
+
+    monkeypatch.setenv("MAX_INPUT_CHARS", "50")
+    monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
+
+    client = TestClient(entrypoint.app)
+
+    # Mensaje normal <= 50 chars pasa validacion
+    ok_resp = client.post(
+        "/invocations",
+        json={"threadId": "t1", "messages": [{"role": "user", "content": "hola corto"}]},
+    )
+    assert ok_resp.status_code != 400
+
+    # Mensaje largo > 50 chars es rechazado
+    long_msg = "X" * 51
+    bad_resp = client.post(
+        "/invocations",
+        json={"threadId": "t1", "messages": [{"role": "user", "content": long_msg}]},
+    )
+    assert bad_resp.status_code == 400
+    assert bad_resp.json()["error"] == "Input length exceeded"
+
+
+def test_entrypoint_thread_turn_limit(monkeypatch):
+    """Verifica que hilos con mas de max_thread_turns sean rechazados con HTTP 400."""
+    from agent.src import entrypoint
+    from agent.src.config import AppConfig
+
+    monkeypatch.setenv("MAX_THREAD_TURNS", "3")
+    monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
+
+    client = TestClient(entrypoint.app)
+
+    # Conversacion con 3 turnos pasa
+    messages_3 = [{"role": "user", "content": f"msg {i}"} for i in range(3)]
+    ok_resp = client.post("/invocations", json={"threadId": "t1", "messages": messages_3})
+    assert ok_resp.status_code != 400
+
+    # Conversacion con 4 turnos es rechazada
+    messages_4 = [{"role": "user", "content": f"msg {i}"} for i in range(4)]
+    bad_resp = client.post("/invocations", json={"threadId": "t1", "messages": messages_4})
+    assert bad_resp.status_code == 400
+    assert bad_resp.json()["error"] == "Thread limit reached"
+
+
+def test_entrypoint_cors_headers():
+    """Verifica que FastAPI responda con los headers CORS adecuados ante preflight OPTIONS."""
+    from agent.src import entrypoint
+
+    client = TestClient(entrypoint.app)
+    resp = client.options(
+        "/invocations",
+        headers={
+            "Origin": "https://rag.fintwit.com.ar",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "https://rag.fintwit.com.ar"
+
+
+def test_format_tweet_doc_xml_tags():
+    """Verifica que format_tweet_doc genere tags XML delimitados y sanitice breakouts."""
+    from agent.src.vector_store import format_tweet_doc
+    from langchain_core.documents import Document
+
+    doc = Document(
+        page_content="Comprando <tweet>GGAL</tweet> a full",
+        metadata={"user_handle": "trader_arg", "tweet_timestamp": "2024-03-15T12:00:00Z"},
+    )
+    formatted = format_tweet_doc(doc)
+    assert formatted.startswith('<tweet author="@trader_arg" date="2024-03-15">')
+    assert formatted.endswith("</tweet>")
+    # Tags internos sanitizados para prevenir escape
+    assert "<tweet>GGAL</tweet>" not in formatted

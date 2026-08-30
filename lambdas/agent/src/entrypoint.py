@@ -1,13 +1,16 @@
-from __future__ import annotations
-
+import asyncio
+import base64
+import json
 import logging
 import os
 import time
+from decimal import Decimal
 from pathlib import Path
 
 from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # Cargar .env opcionalmente si dotenv esta instalado y existe el archivo local
 try:
@@ -50,9 +53,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-import base64
-import json
-from decimal import Decimal
+# Configurar CORS restrictivo
+_allowed_origins = [origin.strip() for origin in app_config.allowed_origins.split(",") if origin.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 class DynamoDBRateLimiter:
@@ -151,10 +160,69 @@ def _extract_jwt_claims(auth_header: str) -> dict:
 
 
 @app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Aplica Rate Limiting global en DynamoDB para usuarios demo y permite bypass para admin."""
+async def safety_and_rate_limit_middleware(request: Request, call_next):
+    """Aplica validaciones de seguridad, control de abuso y Rate Limiting global en DynamoDB."""
     if request.url.path in ("/ping", "/health"):
         return await call_next(request)
+
+    # Validaciones de Seguridad de Input y Turnos para llamadas a /invocations
+    if request.url.path == "/invocations" and request.method == "POST":
+        try:
+            body_bytes = await request.body()
+            if body_bytes:
+                data = json.loads(body_bytes)
+                messages = data.get("messages", [])
+
+                # 1. Validar límite de longitud de texto en el input del usuario
+                for m in messages:
+                    if m.get("role") in ("user", "human"):
+                        content = m.get("content", "")
+                        if isinstance(content, str) and len(content) > app_config.max_input_chars:
+                            logger.warning(
+                                "Mensaje de usuario excede limite de %d caracteres (longitud: %d)",
+                                app_config.max_input_chars,
+                                len(content),
+                            )
+                            return JSONResponse(
+                                status_code=400,
+                                content={
+                                    "error": "Input length exceeded",
+                                    "detail": f"El mensaje supera el límite máximo permitido de {app_config.max_input_chars} caracteres.",
+                                },
+                            )
+                        elif isinstance(content, list):
+                            total_chars = sum(len(part.get("text", "")) for part in content if isinstance(part, dict))
+                            if total_chars > app_config.max_input_chars:
+                                logger.warning(
+                                    "Mensaje de usuario excede limite de %d caracteres (longitud: %d)",
+                                    app_config.max_input_chars,
+                                    total_chars,
+                                )
+                                return JSONResponse(
+                                    status_code=400,
+                                    content={
+                                        "error": "Input length exceeded",
+                                        "detail": f"El mensaje supera el límite máximo permitido de {app_config.max_input_chars} caracteres.",
+                                    },
+                                )
+
+                # 2. Validar límite de turnos por conversación
+                user_msg_count = sum(1 for m in messages if m.get("role") in ("user", "human"))
+                if user_msg_count > app_config.max_thread_turns:
+                    logger.warning(
+                        "Conversacion excede limite de %d turnos (turnos: %d)",
+                        app_config.max_thread_turns,
+                        user_msg_count,
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "Thread limit reached",
+                            "detail": f"Esta conversación ha alcanzado el límite máximo de {app_config.max_thread_turns} turnos. Por favor iniciá una Nueva Conversación.",
+                        },
+                    )
+        except Exception as err:
+            logger.warning("No se pudo parsear el body de invocacion para validacion de seguridad: %s", err)
 
     auth_header = request.headers.get("authorization", "")
     claims = _extract_jwt_claims(auth_header)
@@ -167,7 +235,8 @@ async def rate_limit_middleware(request: Request, call_next):
     # Bypass total de rate limit para usuario administrador
     admin_target = app_config.admin_email.lower()
     if (username and username.lower() == admin_target) or any(str(g).lower() == "admin" for g in groups):
-        return await call_next(request)
+        resp = await call_next(request)
+        return _wrap_with_timeout(resp)
 
     # Cuota global compartida en DynamoDB para todos los visitantes demo (previene ataques de rotacion de IP)
     client_key = "global_demo_pool"
@@ -192,7 +261,29 @@ async def rate_limit_middleware(request: Request, call_next):
             },
         )
 
-    return await call_next(request)
+    resp = await call_next(request)
+    return _wrap_with_timeout(resp)
+
+
+def _wrap_with_timeout(resp):
+    """Envuelve la respuesta en timeout estricto de ejecucion si es StreamingResponse."""
+    if isinstance(resp, StreamingResponse) and app_config.invocation_timeout_seconds > 0:
+        orig_body_iterator = resp.body_iterator
+
+        async def timed_iter():
+            try:
+                async with asyncio.timeout(app_config.invocation_timeout_seconds):
+                    async for chunk in orig_body_iterator:
+                        yield chunk
+            except TimeoutError:
+                logger.warning(
+                    "Invocación cortada por timeout de %ds.",
+                    app_config.invocation_timeout_seconds,
+                )
+                yield f'data: {{"type": "RUN_ERROR", "code": "TIMEOUT", "message": "La ejecución superó el tiempo límite de {app_config.invocation_timeout_seconds} segundos."}}\n\n'.encode()
+
+        resp.body_iterator = timed_iter()
+    return resp
 
 
 @app.get("/ping")

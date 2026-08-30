@@ -45,6 +45,12 @@ class AppConfig:
     rate_limit_window_seconds: int = 1800
     admin_email: str = "admin@fintwit.com"
 
+    # Safety, Input Clamping & CORS
+    max_input_chars: int = 1000
+    max_thread_turns: int = 20
+    invocation_timeout_seconds: int = 45
+    allowed_origins: str = "https://rag.fintwit.com.ar,http://localhost:5173,http://localhost:3000"
+
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
@@ -76,4 +82,10 @@ class AppConfig:
             rate_limit_requests=int(os.environ.get("RATE_LIMIT_REQUESTS", cls.rate_limit_requests)),
             rate_limit_window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", cls.rate_limit_window_seconds)),
             admin_email=os.environ.get("ADMIN_EMAIL", cls.admin_email),
+            max_input_chars=int(os.environ.get("MAX_INPUT_CHARS", cls.max_input_chars)),
+            max_thread_turns=int(os.environ.get("MAX_THREAD_TURNS", cls.max_thread_turns)),
+            invocation_timeout_seconds=int(
+                os.environ.get("INVOCATION_TIMEOUT_SECONDS", cls.invocation_timeout_seconds)
+            ),
+            allowed_origins=os.environ.get("ALLOWED_ORIGINS", cls.allowed_origins),
         )

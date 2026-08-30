@@ -191,12 +191,16 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     CRAG_RELEVANCE_THRESHOLD  = tostring(var.crag_relevance_threshold)
     MEMORY_TOKEN_LIMIT        = tostring(var.memory_token_limit)
     MEMORY_KEEP_MESSAGES      = tostring(var.memory_keep_messages)
-    RATE_LIMIT_REQUESTS       = tostring(var.rate_limit_requests)
-    RATE_LIMIT_WINDOW_SECONDS = tostring(var.rate_limit_window_seconds)
-    ADMIN_EMAIL               = var.cognito_admin_email
-    LANGSMITH_TRACING         = var.langsmith_api_key != "" ? "true" : "false"
-    LANGSMITH_API_KEY         = var.langsmith_api_key
-    LANGSMITH_PROJECT         = var.langsmith_project
+    RATE_LIMIT_REQUESTS        = tostring(var.rate_limit_requests)
+    RATE_LIMIT_WINDOW_SECONDS  = tostring(var.rate_limit_window_seconds)
+    ADMIN_EMAIL                = var.cognito_admin_email
+    MAX_INPUT_CHARS            = tostring(var.max_input_chars)
+    MAX_THREAD_TURNS           = tostring(var.max_thread_turns)
+    INVOCATION_TIMEOUT_SECONDS = tostring(var.invocation_timeout_seconds)
+    ALLOWED_ORIGINS            = var.allowed_origins
+    LANGSMITH_TRACING          = var.langsmith_api_key != "" ? "true" : "false"
+    LANGSMITH_API_KEY          = var.langsmith_api_key
+    LANGSMITH_PROJECT          = var.langsmith_project
   }
 
   depends_on = [

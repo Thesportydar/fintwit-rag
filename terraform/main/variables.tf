@@ -231,3 +231,27 @@ variable "rate_limit_window_seconds" {
   type        = number
   default     = 1800
 }
+
+variable "max_input_chars" {
+  description = "Maximum characters allowed per user input message"
+  type        = number
+  default     = 1000
+}
+
+variable "max_thread_turns" {
+  description = "Maximum user messages allowed per conversation thread"
+  type        = number
+  default     = 20
+}
+
+variable "invocation_timeout_seconds" {
+  description = "Execution timeout for Bedrock AgentCore invocations in seconds"
+  type        = number
+  default     = 45
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated allowed CORS origins"
+  type        = string
+  default     = "https://rag.fintwit.com.ar,http://localhost:5173,http://localhost:3000"
+}

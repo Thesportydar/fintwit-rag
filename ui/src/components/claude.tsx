@@ -339,13 +339,21 @@ export function Claude({
             </div>
           )}
 
+          <AuiIf condition={(state) => state.thread.messages.filter((m) => m.role === "user").length >= 20}>
+            <div className="mx-auto mb-3 w-full max-w-3xl rounded-xl border border-[#ae5630]/40 bg-[#ae5630]/15 px-4 py-2.5 text-xs text-[#f1efe8] font-sans text-center shadow-sm">
+              <span className="font-semibold uppercase tracking-wider text-[#d97c66] mr-1.5">[Aviso]</span>
+              Esta conversación alcanzó el límite de 20 turnos. Por favor iniciá una <b>Nueva Conversación</b> desde la barra lateral.
+            </div>
+          </AuiIf>
+
           <ComposerPrimitive.Root className="mx-auto flex w-full max-w-3xl flex-col rounded-2xl border border-transparent bg-white p-0.5 shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.035),0_0_0_0.5px_rgba(0,0,0,0.08)] transition-shadow duration-200 focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.075),0_0_0_0.5px_rgba(0,0,0,0.15)] hover:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.05),0_0_0_0.5px_rgba(0,0,0,0.12)] dark:bg-[#1f1e1b] dark:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.4),0_0_0_0.5px_rgba(108,106,96,0.15)] dark:hover:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.4),0_0_0_0.5px_rgba(108,106,96,0.3)] dark:focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.5),0_0_0_0.5px_rgba(108,106,96,0.3)]">
             <div className="m-3.5 flex flex-col gap-3.5 font-sans">
               <div className="relative">
                 <div className="max-h-96 w-full overflow-y-auto">
                   <ComposerPrimitive.Input
+                    maxLength={1000}
                     className="block min-h-6 w-full resize-none bg-transparent text-[#1a1a18] outline-none placeholder:text-[#9a9893] dark:text-[#eee] dark:placeholder:text-[#9a9893] text-sm"
-                    placeholder="Consultá tweets o tendencias financieras..."
+                    placeholder="Consultá tweets o tendencias financieras (máx. 1.000 caracteres)..."
                   />
                 </div>
               </div>
@@ -436,7 +444,7 @@ const ChatMessage = () => {
               </div>
               <AuiIf condition={(state) => state.message.isLast}>
                 <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
-                  Fintwit-RAG Bot. Datos históricos e interpretaciones sujetas a validación.
+                  FinTwit RAG es una herramienta de análisis del sentimiento financiero en X (Twitter). No constituye asesoramiento financiero ni recomendación de inversión.
                 </p>
               </AuiIf>
             </ActionBarPrimitive.Root>
