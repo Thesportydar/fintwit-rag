@@ -33,3 +33,7 @@ langsmith_project  = "fintwit-rag-dev"
 # Ingestion S3 Bucket & Prefix
 s3_processed_bucket = "inaqui-prod-twitter-scraper"
 s3_processed_prefix = "processed"
+
+# Budget & Cost Alerts
+budget_limit_amount      = "25"
+budget_subscriber_emails = ["alertas@tudominio.com"]

@@ -72,3 +72,8 @@ output "cognito_admin_email" {
   value       = var.cognito_admin_email
   description = "Admin user email for local development with unlimited rate limit"
 }
+
+output "budget_name" {
+  value       = aws_budgets_budget.monthly.name
+  description = "Name of the monthly AWS Cost Budget"
+}

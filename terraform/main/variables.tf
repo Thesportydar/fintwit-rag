@@ -255,3 +255,15 @@ variable "allowed_origins" {
   type        = string
   default     = "https://rag.fintwit.com.ar,http://localhost:5173,http://localhost:3000"
 }
+
+variable "budget_limit_amount" {
+  description = "Monthly budget limit in USD"
+  type        = string
+  default     = "25"
+}
+
+variable "budget_subscriber_emails" {
+  description = "List of email addresses to receive AWS budget notifications"
+  type        = list(string)
+  default     = ["ipaladinobravo@gmail.com"]
+}
