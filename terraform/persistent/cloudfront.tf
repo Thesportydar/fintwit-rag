@@ -59,4 +59,8 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   }
 
   aliases = [var.frontend_domain]
+
+  lifecycle {
+    ignore_changes = [web_acl_id]
+  }
 }
