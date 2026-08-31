@@ -18,12 +18,14 @@ def get_llm(
         model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         is_reasoning_model = any(prefix in model_name for prefix in ("gpt-5", "o1", "o3"))
 
-        kwargs: dict = {"model": model_name}
+        kwargs: dict = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+        }
         if is_reasoning_model:
             kwargs["reasoning_effort"] = "none"
         else:
             kwargs["temperature"] = temperature
-            kwargs["max_tokens"] = max_tokens
 
         return ChatOpenAI(**kwargs)
 
