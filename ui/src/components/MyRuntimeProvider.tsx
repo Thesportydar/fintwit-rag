@@ -8,7 +8,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import {
   AssistantRuntimeProvider,
@@ -20,6 +22,12 @@ import { useAgUiRuntime } from "@assistant-ui/react-ag-ui";
 import { getCognitoAccessToken } from "../lib/cognito";
 
 const STORAGE_KEY = "fintwit_agui_threads";
+
+export interface FilterSettings {
+  startDate: string;
+  endDate: string;
+  userHandles: string;
+}
 
 export interface ThreadItem {
   id: string;
@@ -34,6 +42,8 @@ export interface MyThreadsContextType {
   onNewThread: () => void;
   onDeleteThread: (id: string) => void;
   onAppendMessage: (text: string) => void;
+  filters: FilterSettings;
+  setFilters: Dispatch<SetStateAction<FilterSettings>>;
 }
 
 export const MyThreadsContext = createContext<MyThreadsContextType | null>(null);
@@ -133,6 +143,11 @@ function AuthenticatedRuntimeProvider({
     const initialMap = loadSavedThreads();
     return computeThreadList(initialMap);
   });
+  const [filters, setFilters] = useState<FilterSettings>({
+    startDate: "",
+    endDate: "",
+    userHandles: "",
+  });
 
   const [currentThreadId, setCurrentThreadId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -219,8 +234,10 @@ function AuthenticatedRuntimeProvider({
       onAppendMessage: (text) => {
         appendMessageRef.current?.(text);
       },
+      filters,
+      setFilters,
     }),
-    [threadsList, currentThreadId, handleNewThread, handleDeleteThread],
+    [threadsList, currentThreadId, handleNewThread, handleDeleteThread, filters],
   );
 
   return (
@@ -229,6 +246,7 @@ function AuthenticatedRuntimeProvider({
         key={currentThreadId}
         token={token}
         threadId={currentThreadId}
+        filters={filters}
         onThreadTitleUpdate={handleThreadTitleUpdate}
         appendMessageRef={appendMessageRef}
       >
@@ -241,12 +259,14 @@ function AuthenticatedRuntimeProvider({
 function SingleThreadRuntime({
   token,
   threadId,
+  filters,
   onThreadTitleUpdate,
   appendMessageRef,
   children,
 }: {
   token: string;
   threadId: string;
+  filters: FilterSettings;
   onThreadTitleUpdate: (threadId: string, title: string) => void;
   appendMessageRef: React.MutableRefObject<((text: string) => void) | null>;
   children: ReactNode;
@@ -255,8 +275,45 @@ function SingleThreadRuntime({
   if (!agentUrl) {
     throw new Error("Falta VITE_AGENTCORE_RUNTIME_URL en variables de entorno");
   }
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   const agent = useMemo(() => {
+    const withSearchFilters = (init: RequestInit | undefined): RequestInit => {
+      if (typeof init?.body !== "string") {
+        return init ?? {};
+      }
+
+      const payload = JSON.parse(init.body) as {
+        state?: unknown;
+      };
+      const state =
+        payload.state && typeof payload.state === "object"
+          ? (payload.state as Record<string, unknown>)
+          : {};
+      const searchFilters = {
+        ...(filtersRef.current.startDate && { start_date: filtersRef.current.startDate }),
+        ...(filtersRef.current.endDate && { end_date: filtersRef.current.endDate }),
+        ...(filtersRef.current.userHandles && {
+          user_handles: filtersRef.current.userHandles
+            .split(",")
+            .map((handle) => handle.trim().replace(/^@/, ""))
+            .filter(Boolean),
+        }),
+      };
+
+      return {
+        ...init,
+        body: JSON.stringify({
+          ...payload,
+          state: {
+            ...state,
+            search_filters: searchFilters,
+          },
+        }),
+      };
+    };
+
     return new HttpAgent({
       url: agentUrl,
       threadId,
@@ -270,12 +327,13 @@ function SingleThreadRuntime({
         headers.set("Authorization", `Bearer ${freshToken}`);
         headers.set("X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", threadId);
 
-        let res = await fetch(input, { ...init, headers });
+        const requestInit = withSearchFilters({ ...init, headers });
+        let res = await fetch(input, requestInit);
         if (res.status === 401) {
           console.warn("Got 401 from Bedrock AgentCore, forcing token refresh and retrying...");
           const renewedToken = await getCognitoAccessToken(undefined, undefined, true);
           headers.set("Authorization", `Bearer ${renewedToken}`);
-          res = await fetch(input, { ...init, headers });
+          res = await fetch(input, { ...requestInit, headers });
         }
         return res;
       },

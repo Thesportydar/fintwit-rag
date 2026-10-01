@@ -39,8 +39,7 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { MarkdownText } from "./markdown-text";
-import type { FilterSettings } from "./my-assistant";
-import type { ThreadItem } from "./MyRuntimeProvider";
+import type { FilterSettings, ThreadItem } from "./MyRuntimeProvider";
 
 const SUGGESTIONS = [
   "Que opina @elonmusk sobre el precio de Tesla y Bitcoin?",
@@ -98,7 +97,7 @@ export function Claude({
           <div className="flex items-center gap-2">
             <div>
               <h2 className="text-sm font-bold tracking-wider text-[#f1efe8]">FINTWIT RAG</h2>
-              <p className="text-[10px] text-[#9a9893] uppercase tracking-wider">Twitter Search Bot</p>
+              <p className="text-[10px] text-[#9a9893] uppercase tracking-wider">Analista de mercado en X</p>
             </div>
           </div>
           <button
@@ -171,7 +170,7 @@ export function Claude({
           >
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={12} />
-              Filtros del LLM
+              Filtros de busqueda
             </div>
             {filtersOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
           </button>

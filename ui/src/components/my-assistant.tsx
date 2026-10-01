@@ -1,27 +1,27 @@
 "use client";
 
-import { useState } from "react";
 import { Claude } from "./claude";
-import { useMyThreads, type ThreadItem } from "./MyRuntimeProvider";
-
-export interface FilterSettings {
-  startDate: string;
-  endDate: string;
-  userHandles: string;
-}
+import { useMyThreads } from "./MyRuntimeProvider";
+import { useAui, useAuiState } from "@assistant-ui/react";
 
 export function MyAssistant() {
-  const { threads, currentThreadId, onSelectThread, onNewThread, onDeleteThread, onAppendMessage } = useMyThreads();
-  const [filters, setFilters] = useState<FilterSettings>({
-    startDate: "",
-    endDate: "",
-    userHandles: "",
-  });
+  const {
+    threads,
+    currentThreadId,
+    onSelectThread,
+    onNewThread,
+    onDeleteThread,
+    onAppendMessage,
+    filters,
+    setFilters,
+  } = useMyThreads();
+  const aui = useAui();
+  const isLoading = useAuiState((state) => state.thread.isRunning);
 
   return (
     <Claude
       error={null}
-      isLoading={false}
+      isLoading={isLoading}
       threadId={currentThreadId}
       threads={threads}
       onSelectThread={onSelectThread}
@@ -29,7 +29,7 @@ export function MyAssistant() {
       onDeleteThread={onDeleteThread}
       filters={filters}
       setFilters={setFilters}
-      onCancel={() => {}}
+      onCancel={() => aui.thread().cancelRun()}
       onSuggestionClick={(prompt: string) => {
         onAppendMessage(prompt);
       }}
