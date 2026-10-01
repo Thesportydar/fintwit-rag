@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
@@ -15,9 +17,11 @@ from qdrant_client.http.models import Distance, PointStruct, VectorParams
 from .config import PipelineConfig
 from .embeddings import JinaEmbeddingService
 from .enricher import TweetEnricher
-from .models import TweetEnrichment
+from .models import ENRICHMENT_VERSION, TweetEnrichment
 
 logger = logging.getLogger(__name__)
+METADATA_VERSION = "v1"
+TWEET_TIMESTAMP_FIELD = "metadata.tweet_timestamp"
 
 ARG_TZ = timezone(timedelta(hours=-3))
 KEY_PATTERN = re.compile(r"data/year=(\d+)/month=(\d+)/day=(\d+)/tweets_(\d+)-(\d+)-(\d+)\.json$")
@@ -37,6 +41,9 @@ ENRICHED_PARQUET_SCHEMA = pa.schema(
         pa.field("sentiment", pa.string()),
         pa.field("topics", pa.list_(pa.string())),
         pa.field("is_financial_insight", pa.bool_()),
+        pa.field("enrichment_status", pa.string()),
+        pa.field("enrichment_version", pa.string()),
+        pa.field("enrichment_confidence", pa.float32()),
         pa.field("crawl_year", pa.int32()),
         pa.field("crawl_month", pa.int32()),
         pa.field("crawl_day", pa.int32()),
@@ -103,24 +110,55 @@ def parse_tweet_record(raw: dict, crawl_meta: dict) -> dict:
     }
 
 
+def build_evidence_id(record: dict) -> str:
+    """Return a stable identifier for a tweet, including records without a platform ID."""
+    tweet_id = record.get("tweet_id")
+    if tweet_id:
+        return f"tweet:{tweet_id}"
+
+    canonical = "\x1f".join(
+        str(record.get(field) or "") for field in ("url", "user_handle", "tweet_timestamp", "content")
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    return f"derived:{digest}"
+
+
 def ensure_qdrant_collection(client: QdrantClient, collection_name: str, vector_size: int = 768):
-    try:
-        collections = client.get_collections().collections
-        if not any(c.name == collection_name for c in collections):
-            logger.info(f"Creando colección híbrida '{collection_name}' en Qdrant...")
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config={"dense": VectorParams(size=vector_size, distance=Distance.COSINE)},
-                sparse_vectors_config={"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)},
-            )
-    except Exception as exc:
-        logger.warning(f"Aviso al verificar colección en Qdrant: {exc}")
+    collections = client.get_collections().collections
+    if not any(c.name == collection_name for c in collections):
+        logger.info(f"Creando colección híbrida '{collection_name}' en Qdrant...")
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config={"dense": VectorParams(size=vector_size, distance=Distance.COSINE)},
+            sparse_vectors_config={"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)},
+        )
+
+    collection = client.get_collection(collection_name)
+    payload_schema = collection.payload_schema or {}
+    timestamp_index = payload_schema.get(TWEET_TIMESTAMP_FIELD)
+    if timestamp_index is None:
+        logger.info("Creando índice datetime de Qdrant para %s", TWEET_TIMESTAMP_FIELD)
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name=TWEET_TIMESTAMP_FIELD,
+            field_schema=models.PayloadSchemaType.DATETIME,
+            wait=True,
+        )
+        return
+
+    data_type = getattr(timestamp_index, "data_type", None)
+    data_type = getattr(data_type, "value", data_type)
+    if data_type != models.PayloadSchemaType.DATETIME.value:
+        raise ValueError(f"El índice Qdrant {TWEET_TIMESTAMP_FIELD} debe ser datetime, pero es {data_type!r}")
 
 
 def records_to_parquet_bytes(records: list[dict]) -> bytes:
     import pandas as pd
 
     df = pd.DataFrame(records)
+    for field_name in ENRICHED_PARQUET_SCHEMA.names:
+        if field_name not in df:
+            df[field_name] = None
     for col in ("tweet_timestamp", "crawl_timestamp"):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], utc=True)
@@ -178,15 +216,20 @@ def process_tweet_records(
                 TweetEnrichment(
                     tweet_id=t_id,
                     tickers=[],
-                    sentiment="neutral",
+                    sentiment="unknown",
                     topics=[],
-                    is_financial_insight=True,
+                    is_financial_insight=None,
+                    enrichment_status="unclassified",
+                    enrichment_version=ENRICHMENT_VERSION,
                 ),
             )
             rec["tickers"] = enr.tickers
             rec["sentiment"] = enr.sentiment
             rec["topics"] = enr.topics
             rec["is_financial_insight"] = enr.is_financial_insight
+            rec["enrichment_status"] = enr.enrichment_status
+            rec["enrichment_version"] = enr.enrichment_version
+            rec["enrichment_confidence"] = enr.confidence
             enriched_records.append(rec)
 
     # 3. Generación de Embeddings densos con Jina
@@ -197,15 +240,19 @@ def process_tweet_records(
     points = []
     for idx, rec in enumerate(enriched_records):
         raw_id = rec.get("tweet_id")
+        evidence_id = build_evidence_id(rec)
         if raw_id and str(raw_id).isdigit():
             point_id = int(raw_id)
         else:
-            point_id = idx + 1
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, evidence_id))
 
         tweet_ts = rec["tweet_timestamp"].isoformat() if rec.get("tweet_timestamp") else None
         crawl_ts = rec["crawl_timestamp"].isoformat() if rec.get("crawl_timestamp") else None
 
         metadata = {
+            "tweet_id": rec["tweet_id"],
+            "evidence_id": evidence_id,
+            "metadata_version": METADATA_VERSION,
             "user_handle": rec["user_handle"],
             "tweet_timestamp": tweet_ts,
             "crawl_timestamp": crawl_ts,
@@ -216,6 +263,9 @@ def process_tweet_records(
             "sentiment": rec["sentiment"],
             "topics": rec["topics"],
             "is_financial_insight": rec["is_financial_insight"],
+            "enrichment_status": rec["enrichment_status"],
+            "enrichment_version": rec["enrichment_version"],
+            "enrichment_confidence": rec["enrichment_confidence"],
             "tweet_year": rec["tweet_year"],
             "tweet_month": rec["tweet_month"],
             "tweet_day": rec["tweet_day"],

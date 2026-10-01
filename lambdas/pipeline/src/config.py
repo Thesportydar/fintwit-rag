@@ -16,6 +16,9 @@ class PipelineConfig:
     jina_embed_model: str = "jina-embeddings-v5-text-nano"
     openai_api_key: str = ""
     enrichment_model: str = "gpt-4o-mini"
+    enrichment_provider: str = "openai"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
     enrichment_batch_size: int = 15
     aws_region: str = "us-east-1"
 
@@ -32,6 +35,9 @@ class PipelineConfig:
             jina_embed_model=os.environ.get("JINA_EMBED_MODEL", cls.jina_embed_model),
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
             enrichment_model=os.environ.get("ENRICHMENT_MODEL", os.environ.get("OPENAI_MODEL", cls.enrichment_model)),
+            enrichment_provider=os.environ.get("ENRICHMENT_PROVIDER", cls.enrichment_provider).lower(),
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
+            gemini_model=os.environ.get("GEMINI_MODEL", cls.gemini_model),
             enrichment_batch_size=int(os.environ.get("ENRICHMENT_BATCH_SIZE", cls.enrichment_batch_size)),
             aws_region=os.environ.get("AWS_REGION", cls.aws_region),
         )

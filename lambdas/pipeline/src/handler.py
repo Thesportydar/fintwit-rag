@@ -10,7 +10,7 @@ from qdrant_client import QdrantClient
 
 from .config import PipelineConfig
 from .embeddings import JinaEmbeddingService
-from .enricher import TweetEnricher
+from .enricher import create_tweet_enricher
 from .processor import parse_s3_key, process_tweet_records
 
 logger = logging.getLogger()
@@ -34,7 +34,7 @@ def lambda_handler(event: dict, context: Any = None) -> dict:
     config = PipelineConfig.from_env()
 
     s3_client = boto3.client("s3", region_name=config.aws_region)
-    enricher = TweetEnricher(api_key=config.openai_api_key, model=config.enrichment_model)
+    enricher = create_tweet_enricher(config)
     embedder = JinaEmbeddingService(
         api_key=config.jina_api_key,
         url=config.jina_embed_url,

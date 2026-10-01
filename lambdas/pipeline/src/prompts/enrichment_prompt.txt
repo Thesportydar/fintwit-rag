@@ -5,18 +5,8 @@ INSTRUCCIONES DE EXTRACCIÓN:
 
 1. TICKERS (tickers):
    - Extraé y normalizá en mayúsculas los tickers o instrumentos financieros mencionados explícita o implícitamente en la jerga de FinTwit.
-   - Ejemplos de jerga común:
-     * "la gallega", "Galicia" -> ["GGAL"]
-     * "los al30", "bonar 30" -> ["AL30"]
-     * "los globales", "gd30" -> ["GD30"]
-     * "ypf" -> ["YPFD"]
-     * "pampa" -> ["PAMP"]
-     * "macro" -> ["BMA"]
-     * "bopreal" -> ["BOPREAL"]
-     * "lecap", "lefi" -> ["LECAP", "LEFI"]
-     * "el mep", "el ccl" -> ["USD", "MEP", "CCL"]
-     * "merval" -> ["MERVAL"]
-     * "bitcoin", "btc" -> ["BTC"]
+   - Interpretá referencias coloquiales y nombres de empresas o instrumentos por contexto, aunque el símbolo no aparezca explícitamente.
+   - Convertí las referencias a su símbolo canónico sólo cuando la correspondencia sea clara; si es ambigua, devolvé lista vacía.
    - NUNCA inventes tickers a partir de años o fechas (ej: "2024" NO es un ticker).
    - Si no se menciona ningún activo o ticker concreto, devolvé lista vacía [].
 
@@ -40,3 +30,8 @@ INSTRUCCIONES DE EXTRACCIÓN:
 4. VALOR FINANCIERO (is_financial_insight):
    - true: Si el tweet contiene opinión de mercado, datos, cotizaciones, noticias económicas o reflexiones financieras.
    - false: Si es una chicana personal, saludo, meme sin contenido económico, chiste o spam.
+   - Si no podés decidir con suficiente información, devolvé null. No transformes incertidumbre en true o false.
+
+5. CONFIANZA (confidence):
+   - Devolvé una confianza global entre 0 y 1 para la clasificación realizada.
+   - Usá null si no podés clasificar el tweet.

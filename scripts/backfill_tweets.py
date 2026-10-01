@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lambdas" / "pipeline"))
 
 from src.config import PipelineConfig
 from src.embeddings import JinaEmbeddingService
-from src.enricher import TweetEnricher
+from src.enricher import create_tweet_enricher
 from src.processor import parse_s3_key, process_tweet_records
 
 
@@ -89,7 +89,7 @@ def run_backfill(
             print(f"  ... y {len(keys) - 5} archivos más.")
         return
 
-    enricher = TweetEnricher(api_key=config.openai_api_key, model=config.enrichment_model)
+    enricher = create_tweet_enricher(config)
     embedder = JinaEmbeddingService(
         api_key=config.jina_api_key,
         url=config.jina_embed_url,
