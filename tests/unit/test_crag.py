@@ -676,6 +676,15 @@ def test_entrypoint_rate_limiting(monkeypatch):
     mock_table = MockDynamoTable()
     monkeypatch.setattr(entrypoint.rate_limiter, "_table", mock_table)
 
+    mock_clone = MagicMock()
+
+    async def mock_run(data):
+        if False:
+            yield None
+
+    mock_clone.run = mock_run
+    monkeypatch.setattr(entrypoint.langgraph_agent, "clone", MagicMock(return_value=mock_clone))
+
     client = TestClient(entrypoint.app)
 
     # Healthchecks no deben ser rate-limited
@@ -740,12 +749,21 @@ def test_entrypoint_input_length_limit(monkeypatch):
     monkeypatch.setenv("MAX_INPUT_CHARS", "50")
     monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
 
+    mock_clone = MagicMock()
+
+    async def mock_run(data):
+        if False:
+            yield None
+
+    mock_clone.run = mock_run
+    monkeypatch.setattr(entrypoint.langgraph_agent, "clone", MagicMock(return_value=mock_clone))
+
     client = TestClient(entrypoint.app)
 
     # Mensaje normal <= 50 chars pasa validacion
     ok_resp = client.post(
         "/invocations",
-        json={"threadId": "t1", "messages": [{"role": "user", "content": "hola corto"}]},
+        json={"threadId": "t1", "runId": "r1", "messages": [{"role": "user", "content": "hola corto", "id": "m1"}]},
     )
     assert ok_resp.status_code != 400
 
@@ -753,7 +771,7 @@ def test_entrypoint_input_length_limit(monkeypatch):
     long_msg = "X" * 51
     bad_resp = client.post(
         "/invocations",
-        json={"threadId": "t1", "messages": [{"role": "user", "content": long_msg}]},
+        json={"threadId": "t1", "runId": "r2", "messages": [{"role": "user", "content": long_msg, "id": "m2"}]},
     )
     assert bad_resp.status_code == 400
     assert bad_resp.json()["error"] == "Input length exceeded"
@@ -767,16 +785,25 @@ def test_entrypoint_thread_turn_limit(monkeypatch):
     monkeypatch.setenv("MAX_THREAD_TURNS", "3")
     monkeypatch.setattr(entrypoint, "app_config", AppConfig.from_env())
 
+    mock_clone = MagicMock()
+
+    async def mock_run(data):
+        if False:
+            yield None
+
+    mock_clone.run = mock_run
+    monkeypatch.setattr(entrypoint.langgraph_agent, "clone", MagicMock(return_value=mock_clone))
+
     client = TestClient(entrypoint.app)
 
     # Conversacion con 3 turnos pasa
-    messages_3 = [{"role": "user", "content": f"msg {i}"} for i in range(3)]
-    ok_resp = client.post("/invocations", json={"threadId": "t1", "messages": messages_3})
+    messages_3 = [{"role": "user", "content": f"msg {i}", "id": f"m{i}"} for i in range(3)]
+    ok_resp = client.post("/invocations", json={"threadId": "t1", "runId": "r1", "messages": messages_3})
     assert ok_resp.status_code != 400
 
     # Conversacion con 4 turnos es rechazada
-    messages_4 = [{"role": "user", "content": f"msg {i}"} for i in range(4)]
-    bad_resp = client.post("/invocations", json={"threadId": "t1", "messages": messages_4})
+    messages_4 = [{"role": "user", "content": f"msg {i}", "id": f"m{i}"} for i in range(4)]
+    bad_resp = client.post("/invocations", json={"threadId": "t1", "runId": "r2", "messages": messages_4})
     assert bad_resp.status_code == 400
     assert bad_resp.json()["error"] == "Thread limit reached"
 
