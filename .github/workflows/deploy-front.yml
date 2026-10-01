@@ -36,7 +36,7 @@ jobs:
           version: 9
 
       - name: Install modules
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build application
         run: pnpm run build

@@ -13,26 +13,6 @@ output "lambda_ingest_arn" {
   description = "ARN of the Ingest Pipeline Lambda function"
 }
 
-output "qdrant_instance_id" {
-  value       = aws_instance.qdrant.id
-  description = "The EC2 Instance ID for Qdrant (use for SSM Session Manager)"
-}
-
-output "qdrant_public_ip" {
-  value       = aws_eip.lb.public_ip
-  description = "The Elastic IP of the Qdrant instance"
-}
-
-output "qdrant_dashboard_url" {
-  value       = "http://${var.qdrant_domain_name}:6333/dashboard"
-  description = "The Qdrant Web Dashboard URL"
-}
-
-output "qdrant_ebs_volume_id" {
-  value       = aws_ebs_volume.qdrant.id
-  description = "The ID of the active EBS volume created for Qdrant"
-}
-
 output "agent_ecr_repository_url" {
   value       = aws_ecr_repository.agent.repository_url
   description = "The ECR Repository URL for the FinTwit Agent container"

@@ -12,7 +12,7 @@ jina_embed_model   = "jina-embeddings-v5-text-nano"
 jina_rerank_model  = "jina-reranker-v3"
 
 # Qdrant Database
-qdrant_domain_name = "qdrant.tudominio.com"
+qdrant_url         = "https://xxxx.qdrant.tech:6333"
 qdrant_api_key     = "AQUI_TU_QDRANT_API_KEY_SECRETA"
 collection_name    = "tweets"
 

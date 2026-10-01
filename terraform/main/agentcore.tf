@@ -4,7 +4,7 @@
 
 resource "aws_ecr_repository" "agent" {
   name                 = "${var.project}-${var.env}-agent"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true
 
   image_scanning_configuration {
@@ -148,9 +148,14 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
   description        = "FinTwit LangGraph RAG Agent Runtime v4"
   role_arn           = aws_iam_role.agentcore_runtime_role.arn
 
+  # CI owns application image releases after the runtime is bootstrapped.
+  lifecycle {
+    ignore_changes = [agent_runtime_artifact]
+  }
+
   agent_runtime_artifact {
     container_configuration {
-      container_uri = "${aws_ecr_repository.agent.repository_url}:latest"
+      container_uri = "${aws_ecr_repository.agent.repository_url}:${var.agent_image_tag}"
     }
   }
 
@@ -170,27 +175,27 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
   }
 
   environment_variables = {
-    JINA_API_KEY              = var.jina_api_key
-    QDRANT_URL                = "http://${var.qdrant_domain_name}:6333"
-    QDRANT_API_KEY            = var.qdrant_api_key
-    COLLECTION_NAME           = var.collection_name
-    LLM_PROVIDER              = var.llm_provider
-    OPENAI_API_KEY            = var.openai_api_key
-    OPENAI_MODEL              = var.openai_model
-    BEDROCK_MODEL_ID          = var.bedrock_model_id
-    JINA_EMBED_URL            = var.jina_embed_url
-    JINA_RERANK_URL           = var.jina_rerank_url
-    JINA_EMBED_MODEL          = var.jina_embed_model
-    JINA_RERANK_MODEL         = var.jina_rerank_model
-    DYNAMODB_CHECKPOINT_TABLE = var.dynamodb_checkpoint_table
-    DYNAMODB_STORE_TABLE      = var.dynamodb_store_table
-    DYNAMODB_RATE_LIMIT_TABLE = var.dynamodb_rate_limit_table
-    RETRIEVER_K               = tostring(var.retriever_k)
-    RERANKER_TOP_N            = tostring(var.reranker_top_n)
-    CRAG_MAX_ATTEMPTS         = tostring(var.crag_max_attempts)
-    CRAG_RELEVANCE_THRESHOLD  = tostring(var.crag_relevance_threshold)
-    MEMORY_TOKEN_LIMIT        = tostring(var.memory_token_limit)
-    MEMORY_KEEP_MESSAGES      = tostring(var.memory_keep_messages)
+    JINA_API_KEY               = var.jina_api_key
+    QDRANT_URL                 = local.qdrant_connection_url
+    QDRANT_API_KEY             = var.qdrant_api_key
+    COLLECTION_NAME            = var.collection_name
+    LLM_PROVIDER               = var.llm_provider
+    OPENAI_API_KEY             = var.openai_api_key
+    OPENAI_MODEL               = var.openai_model
+    BEDROCK_MODEL_ID           = var.bedrock_model_id
+    JINA_EMBED_URL             = var.jina_embed_url
+    JINA_RERANK_URL            = var.jina_rerank_url
+    JINA_EMBED_MODEL           = var.jina_embed_model
+    JINA_RERANK_MODEL          = var.jina_rerank_model
+    DYNAMODB_CHECKPOINT_TABLE  = var.dynamodb_checkpoint_table
+    DYNAMODB_STORE_TABLE       = var.dynamodb_store_table
+    DYNAMODB_RATE_LIMIT_TABLE  = var.dynamodb_rate_limit_table
+    RETRIEVER_K                = tostring(var.retriever_k)
+    RERANKER_TOP_N             = tostring(var.reranker_top_n)
+    CRAG_MAX_ATTEMPTS          = tostring(var.crag_max_attempts)
+    CRAG_RELEVANCE_THRESHOLD   = tostring(var.crag_relevance_threshold)
+    MEMORY_TOKEN_LIMIT         = tostring(var.memory_token_limit)
+    MEMORY_KEEP_MESSAGES       = tostring(var.memory_keep_messages)
     RATE_LIMIT_REQUESTS        = tostring(var.rate_limit_requests)
     RATE_LIMIT_WINDOW_SECONDS  = tostring(var.rate_limit_window_seconds)
     ADMIN_EMAIL                = var.cognito_admin_email

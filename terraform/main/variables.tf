@@ -14,6 +14,7 @@ variable "terraform_role_arn" {
   type        = string
 }
 
+
 variable "region" {
   description = "The AWS region to deploy resources in"
   type        = string
@@ -66,6 +67,11 @@ variable "openai_model" {
   description = "OpenAI model name"
   type        = string
   default     = "gpt-4o-mini"
+}
+
+variable "agent_image_tag" {
+  description = "Immutable ECR image tag deployed to AgentCore"
+  type        = string
 }
 
 variable "enrichment_model" {
@@ -123,9 +129,11 @@ variable "jina_rerank_model" {
   default     = "jina-reranker-v3"
 }
 
-variable "qdrant_domain_name" {
-  description = "The domain name for the Qdrant instance"
+
+variable "qdrant_url" {
+  description = "Qdrant Cloud HTTPS connection URL"
   type        = string
+  default     = ""
 }
 
 variable "hosted_zone_name" {

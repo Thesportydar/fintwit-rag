@@ -1,9 +1,11 @@
 locals {
   lambda_ingest_name = "${var.project}-${var.env}-ingest"
 
+  qdrant_connection_url = trimsuffix(var.qdrant_url, "/")
+
   lambda_ingest_environment = {
     COLLECTION_NAME     = var.collection_name
-    QDRANT_URL          = "http://${trimsuffix(aws_route53_record.www.fqdn, ".")}:6333"
+    QDRANT_URL          = local.qdrant_connection_url
     QDRANT_API_KEY      = var.qdrant_api_key
     JINA_API_KEY        = var.jina_api_key
     JINA_EMBED_URL      = var.jina_embed_url

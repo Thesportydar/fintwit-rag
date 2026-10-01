@@ -77,7 +77,7 @@ resource "aws_cloudwatch_event_rule" "tweets_uploaded" {
 
   event_pattern = jsonencode({
     source      = ["twitter.scraper"]
-    detail-type = ["tweetsuploaded"]
+    detail-type = ["TweetsUploaded"]
   })
 }
 

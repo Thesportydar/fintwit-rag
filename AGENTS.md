@@ -55,9 +55,10 @@ lambdas/
 ui/                      # SPA React 19 con Assistant UI (rag.fintwit.com.ar)
 scripts/
   build_and_push_agent.sh # Script automatizado de login en ECR, buildx ARM64 y push
+  deploy_agentcore.sh      # Actualiza AgentCore preservando la configuracion del runtime
 terraform/
-  persistent/            # Infraestructura base (Hosting S3 + CloudFront Flat-Rate, ACM, Route53, EBS)
-  main/                  # Infraestructura mutable (Bedrock AgentCore, Cognito, ECR, IAM, Lambda, Qdrant EC2, Budget)
+  persistent/            # Infraestructura base (Hosting S3 + CloudFront Flat-Rate, ACM, Route53, snapshots)
+  main/                  # Infraestructura mutable (Bedrock AgentCore, Cognito, ECR, IAM, Lambda, Budget)
 tests/
   unit/                  # Tests unitarios rapidos (test_crag.py, test_pipeline.py, etc.)
   e2e/                   # Tests en vivo contra AWS (test_agentcore_live.py con flag --live)
@@ -116,7 +117,7 @@ AWS_PROFILE=dev-admin pytest tests/e2e/test_agentcore_live.py --live -v
 
 ### Despliegue de Infraestructura (Terraform)
 ```bash
-# Infraestructura mutable (Bedrock AgentCore, Budget, Qdrant EC2, Cognito)
+# Infraestructura mutable (Bedrock AgentCore, Budget, Cognito)
 cd terraform/main
 terraform plan -var-file=dev.tfvars
 terraform apply -var-file=dev.tfvars
