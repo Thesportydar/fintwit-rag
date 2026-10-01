@@ -3,12 +3,16 @@ from unittest.mock import MagicMock
 from agent.src.vector_store import create_search_tweets_tool
 from agent.src.workflows.crag import (
     AgentState,
+    _agent_node,
+    _check_relevance,
+    _has_temporal_coverage,
     _maybe_summarize,
     _rewrite_query,
+    _synthesis_context_messages,
     build_agent_workflow,
 )
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.tools import tool
 
 
@@ -19,8 +23,52 @@ def test_agent_graph_compilation():
     assert graph is not None
     assert "maybe_summarize" in graph.nodes
     assert "agent_node" in graph.nodes
+    assert {"agent_node", "tools", "assess_coverage", "synthesize"} <= set(graph.nodes)
     assert "tools" in graph.nodes
+    assert "assess_coverage" in graph.nodes
     assert "synthesize" in graph.nodes
+
+
+def test_temporal_coverage_accepts_open_ended_ranges():
+    assert _has_temporal_coverage(["2024-05-10"], "2024-01-01..*") is True
+    assert _has_temporal_coverage(["2023-05-10"], "2024-01-01..*") is False
+
+
+def test_research_uses_standard_llm_tool_decision_when_coverage_is_strong():
+    """The standard agent tool call should reach synthesis without a relevance grader."""
+    call_count = 0
+
+    @tool
+    def search_tweets(query: str, **kwargs) -> str:
+        """Return strong multi-author evidence for the test query."""
+        nonlocal call_count
+        call_count += 1
+        return (
+            '<tweet id="tweet:1" author="@one" date="2024-05-10" sentiment="bullish">GGAL sube.</tweet>'
+            '<tweet id="tweet:2" author="@two" date="2024-05-11" sentiment="bearish">GGAL enfrenta riesgos.</tweet>'
+            '<tweet id="tweet:3" author="@three" date="2024-05-12">GGAL presenta resultados.</tweet>'
+        )
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="Sintesis grounded sobre GGAL.")
+    mock_bound_llm = MagicMock()
+    mock_bound_llm.invoke.return_value = AIMessage(
+        content="",
+        tool_calls=[{"name": "search_tweets", "args": {"query": "GGAL balance"}, "id": "call_1"}],
+    )
+    mock_llm.bind_tools.return_value = mock_bound_llm
+    graph = build_agent_workflow(search_tool=search_tweets)
+
+    final_state = graph.invoke(
+        {"messages": [{"role": "user", "content": "Que dicen de GGAL?"}]},
+        config={"configurable": {"llm": mock_llm, "search_tool": search_tweets}},
+    )
+
+    assert call_count == 1
+    mock_llm.bind_tools.assert_called_once()
+    mock_llm.with_structured_output.assert_not_called()
+    assert final_state.get("synthesis_calls") == 1
+    assert final_state["response"] == "Sintesis grounded sobre GGAL."
 
 
 def test_create_search_tweets_tool_execution():
@@ -60,8 +108,9 @@ def test_query_rewriter_alias_expansion():
     mock_llm.invoke.return_value = mock_response
 
     state: AgentState = {
-        "query": "que dicen de la gallega hoy",
+        "messages": [HumanMessage(content="que dicen de la gallega hoy")],
         "search_attempts": 0,
+        "search_filters": {"user_handles": ["analista"]},
     }
     config = {"configurable": {"llm": mock_llm}}
 
@@ -70,6 +119,7 @@ def test_query_rewriter_alias_expansion():
 
     assert "GGAL" in rewritten.upper() or "GALICIA" in rewritten.upper()
     assert result["search_attempts"] == 1
+    assert result["messages"][0].tool_calls[0]["args"]["user_handles"] == ["analista"]
 
 
 def test_query_rewriter_date_no_ticker_hallucination():
@@ -80,7 +130,7 @@ def test_query_rewriter_date_no_ticker_hallucination():
     mock_llm.invoke.return_value = mock_response
 
     state: AgentState = {
-        "query": "vision de los bonos soberanos en 2024",
+        "messages": [HumanMessage(content="vision de los bonos soberanos en 2024")],
         "search_attempts": 0,
     }
     config = {"configurable": {"llm": mock_llm}}
@@ -90,6 +140,66 @@ def test_query_rewriter_date_no_ticker_hallucination():
 
     assert "GD24" not in rewritten.upper()
     assert "AL24" not in rewritten.upper()
+
+
+def test_agent_node_applies_client_search_filters():
+    """Valida que los filtros del panel se apliquen a la llamada de busqueda."""
+    search_tool = MagicMock()
+    mock_llm = MagicMock()
+    mock_bound_llm = MagicMock()
+    mock_bound_llm.invoke.return_value = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_tweets",
+                "args": {"query": "bonos soberanos"},
+                "id": "call_filtered",
+            }
+        ],
+    )
+    mock_llm.bind_tools.return_value = mock_bound_llm
+
+    result = _agent_node(
+        {
+            "messages": [HumanMessage(content="Que dicen de los bonos?")],
+            "search_filters": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31",
+                "user_handles": ["@analista"],
+            },
+        },
+        {"configurable": {"llm": mock_llm, "search_tool": search_tool}},
+    )
+
+    args = result["messages"][0].tool_calls[0]["args"]
+    assert args["start_date"] == "2025-01-01"
+    assert args["end_date"] == "2025-12-31"
+    assert args["user_handles"] == ["analista"]
+
+
+def test_agent_node_excludes_orphaned_tool_messages_from_decision_context():
+    """Evita reenviar resultados de retrieval sin su AIMessage(tool_calls) precedente."""
+    search_tool = MagicMock()
+    mock_llm = MagicMock()
+    mock_bound_llm = MagicMock()
+    mock_bound_llm.invoke.return_value = AIMessage(content="Nueva respuesta")
+    mock_llm.bind_tools.return_value = mock_bound_llm
+
+    _agent_node(
+        {
+            "messages": [
+                HumanMessage(content="Consulta anterior"),
+                AIMessage(content="Respuesta anterior"),
+                ToolMessage(content="Resultado persistido", tool_call_id="missing-call"),
+                HumanMessage(content="Nueva consulta"),
+            ],
+        },
+        {"configurable": {"llm": mock_llm, "search_tool": search_tool}},
+    )
+
+    decision_messages = mock_bound_llm.invoke.call_args.args[0]
+    assert [message.type for message in decision_messages] == ["system", "human", "ai", "human"]
+    assert all(message.type != "tool" for message in decision_messages)
 
 
 def test_agent_workflow_direct_conversation():
@@ -221,14 +331,128 @@ def test_maybe_summarize_triggers_when_exceeding_limit():
 
     result = _maybe_summarize(state, config)
 
-    assert "summary" in result
-    assert "bonos soberanos" in result["summary"]
+    assert "conversation_summary" in result
+    assert "bonos soberanos" in result["conversation_summary"]
     assert "messages" in result
     # Debe haber 12 RemoveMessage (15 - 3 = 12 viejos)
     removes = [m for m in result["messages"] if isinstance(m, RemoveMessage)]
     assert len(removes) == 12
     assert removes[0].id == "msg_0"
     assert removes[-1].id == "msg_11"
+
+
+def test_maybe_summarize_excludes_retrieval_payloads_from_conversation_memory():
+    """Los tweets recuperados no deben entrar en el resumen conversacional."""
+    mock_llm = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.content = "El usuario consulto por GGAL."
+    mock_llm.invoke.return_value = mock_resp
+
+    messages = [
+        HumanMessage(content="Que dicen de GGAL?", id="msg_1"),
+        ToolMessage(content="<tweet id='tweet:1'>Comprar GGAL ya</tweet>", tool_call_id="call_1"),
+        AIMessage(
+            content="Los tweets muestran opiniones divididas.",
+            id="msg_2",
+        ),
+        HumanMessage(content="Y que riesgos mencionan?", id="msg_3"),
+    ]
+    result = _maybe_summarize(
+        {"messages": messages},
+        {"configurable": {"llm": mock_llm, "memory_token_limit": 1, "memory_keep_messages": 1}},
+    )
+
+    summary_input = mock_llm.invoke.call_args.args[0][1].content
+    assert "Que dicen de GGAL?" in summary_input
+    assert "opiniones divididas" in summary_input
+    assert "Comprar GGAL ya" not in summary_input
+    assert "conversation_summary" in result
+    assert "summary" not in result
+
+
+def test_synthesis_context_uses_only_latest_retrieval_attempt():
+    messages = [
+        HumanMessage(content="Que dicen de GGAL?"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "search_tweets", "args": {"query": "GGAL"}, "id": "call_1"}],
+        ),
+        ToolMessage(content="<tweet id='tweet:old'>Resultado descartado</tweet>", tool_call_id="call_1"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "search_tweets", "args": {"query": "Grupo Galicia"}, "id": "call_2"}],
+        ),
+        ToolMessage(content="<tweet id='tweet:new'>Resultado final</tweet>", tool_call_id="call_2"),
+    ]
+
+    context = _synthesis_context_messages(messages)
+    context_text = "\n".join(str(getattr(message, "content", "")) for message in context)
+
+    assert "Resultado final" in context_text
+    assert "Resultado descartado" not in context_text
+    assert context[-2].tool_calls[0]["id"] == "call_2"
+    assert context[-1].tool_call_id == "call_2"
+
+
+def test_relevance_check_records_deterministic_evidence_quality():
+    from agent.src.workflows.crag import RelevanceResult
+
+    mock_llm = MagicMock()
+    structured_llm = MagicMock()
+    structured_llm.invoke.return_value = RelevanceResult(
+        score=8,
+        reason="Evidencia pertinente.",
+    )
+    mock_llm.with_structured_output.return_value = structured_llm
+
+    result = _check_relevance(
+        {
+            "messages": [
+                HumanMessage(content="Que dicen de GGAL?"),
+                ToolMessage(
+                    content=(
+                        '<tweet id="tweet:1" author="@a" date="2026-01-01" sentiment="bullish">Sube</tweet>\n'
+                        '<tweet id="tweet:2" author="@b" date="2026-01-02" sentiment="bearish">Riesgo</tweet>'
+                    ),
+                    tool_call_id="call_1",
+                ),
+            ]
+        },
+        {"configurable": {"llm": mock_llm}},
+    )
+
+    quality = result["evidence_quality"]
+    assert quality["document_count"] == 2
+    assert quality["unique_authors"] == 2
+    assert quality["contradiction_detected"] is True
+    assert quality["coverage"] == "partial"
+
+
+def test_standard_synthesis_uses_xml_evidence_context():
+    from agent.src.workflows.crag import _synthesize
+
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="GGAL tuvo opiniones divididas [evidence:tweet:known].")
+
+    result = _synthesize(
+        {
+            "messages": [
+                HumanMessage(content="Que dicen de GGAL?"),
+                ToolMessage(
+                    content='<tweet id="tweet:known" author="@a" date="2026-01-01">GGAL</tweet>',
+                    tool_call_id="call_1",
+                ),
+            ]
+        },
+        {"configurable": {"llm": mock_llm}},
+    )
+
+    assert result["response"] == "GGAL tuvo opiniones divididas [evidence:tweet:known]."
+    assert result["citation_audit"]["status"] == "complete"
+    assert result["citation_audit"]["valid_citations"] == ["tweet:known"]
+    prompt_messages = mock_llm.invoke.call_args.args[0]
+    assert '<tweet id="tweet:known"' in prompt_messages[-1].content
+    mock_llm.with_structured_output.assert_not_called()
 
 
 def test_agent_app_configuration_merge_and_invoke():
@@ -253,6 +477,61 @@ def test_agent_app_configuration_merge_and_invoke():
     res = app.invoke(messages=[{"role": "user", "content": "Hola"}], thread_id="test_session")
     assert res["response"] == "Respuesta"
     assert mock_graph.invoke.called
+
+
+def test_relevance_check_uses_latest_user_query():
+    """La evaluacion debe usar la pregunta actual y no la primera del hilo."""
+    from agent.src.workflows.crag import RelevanceResult
+
+    mock_llm = MagicMock()
+    structured_llm = MagicMock()
+    structured_llm.invoke.return_value = RelevanceResult(
+        score=8,
+        reason="La evidencia responde a la pregunta actual.",
+    )
+    mock_llm.with_structured_output.return_value = structured_llm
+
+    result = _check_relevance(
+        {
+            "messages": [
+                HumanMessage(content="Que paso con AL30?"),
+                AIMessage(content="Respuesta anterior"),
+                HumanMessage(content="Que dicen ahora de GGAL?"),
+                ToolMessage(content="<tweet>GGAL sube</tweet>", tool_call_id="call_1"),
+            ]
+        },
+        {"configurable": {"llm": mock_llm}},
+    )
+
+    evaluation_text = structured_llm.invoke.call_args.args[0][1].content
+    assert 'Consulta del usuario: "Que dicen ahora de GGAL?"' in evaluation_text
+    assert "AL30" not in evaluation_text.split("Consulta del usuario:", 1)[1].split("\n", 1)[0]
+    assert result["relevance_evaluation_degraded"] is False
+
+
+def test_relevance_check_marks_evaluation_failure_as_degraded():
+    """Un fallo del juez no debe convertirse en un falso resultado relevante."""
+    mock_llm = MagicMock()
+    structured_llm = MagicMock()
+    structured_llm.invoke.side_effect = RuntimeError("judge unavailable")
+    mock_llm.with_structured_output.return_value = structured_llm
+
+    result = _check_relevance(
+        {
+            "messages": [
+                HumanMessage(content="Que dicen de GGAL?"),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "search_tweets", "args": {"query": "GGAL"}, "id": "call_1"}],
+                ),
+                ToolMessage(content="<tweet>GGAL sube</tweet>", tool_call_id="call_1"),
+            ]
+        },
+        {"configurable": {"llm": mock_llm}},
+    )
+
+    assert result["relevance_score"] == 0.0
+    assert result["relevance_evaluation_degraded"] is True
 
 
 def test_agentcore_entrypoint_invocation(monkeypatch):
@@ -281,8 +560,8 @@ def test_agentcore_entrypoint_invocation(monkeypatch):
 
 def test_agent_workflow_crag_correction_loop():
     """Valida el ciclo completo de auto-correccion de CRAG:
-    agent_node -> tools (intento 1 irrelevante) -> check_relevance (score 2)
-    -> rewrite_query -> tools (intento 2 relevante) -> check_relevance (score 9) -> synthesize -> END.
+    agent -> tools (intento 1 sin resultados) -> rewrite_query
+    -> tools (intento 2 ambiguo) -> check_relevance (score 9) -> synthesize -> END.
     """
     from agent.src.workflows.crag import RelevanceResult
 
@@ -294,8 +573,8 @@ def test_agent_workflow_crag_correction_loop():
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            return "<<< TWEET >>>\nautor: @deportes\nfecha: 2024-05-10\ncontenido: River Plate le gano a Boca Juniors 2 a 0.\n<<< /TWEET >>>"
-        return "<<< TWEET >>>\nautor: @inversor\nfecha: 2024-05-10\ncontenido: Excelente balance de $GGAL con ganancias solidas.\n<<< /TWEET >>>"
+            return ""
+        return '<tweet id="tweet:ggal" author="@inversor" date="2024-05-10">Excelente balance de $GGAL con ganancias solidas.</tweet>'
 
     agent_graph = build_agent_workflow(search_tool=search_tweets)
 
@@ -322,9 +601,7 @@ def test_agent_workflow_crag_correction_loop():
     def structured_invoke_side_effect(messages, **kwargs):
         nonlocal structured_call_count
         structured_call_count += 1
-        if structured_call_count == 1:
-            return RelevanceResult(score=2, relevant=False, reason="Tweets sobre futbol, no de finanzas.")
-        return RelevanceResult(score=9, relevant=True, reason="Tweets financieros directamente sobre GGAL.")
+        return RelevanceResult(score=9, reason="Tweets financieros directamente sobre GGAL.")
 
     mock_structured_llm.invoke.side_effect = structured_invoke_side_effect
     mock_llm.with_structured_output.return_value = mock_structured_llm
@@ -353,15 +630,15 @@ def test_agent_workflow_crag_correction_loop():
     }
 
     initial_state = {
-        "messages": [{"role": "user", "content": "Que dicen de las acciones de Galicia?"}],
+        "messages": [{"role": "user", "content": "Que dicen de GGAL?"}],
     }
 
     final_state = agent_graph.invoke(initial_state, config=config)
 
     assert call_count == 2, f"Se esperaban 2 llamadas a la tool pero hubo {call_count}"
-    assert structured_call_count == 2, f"Se esperaban 2 evaluaciones pero hubo {structured_call_count}"
+    assert structured_call_count == 1, f"Se esperaba 1 evaluacion ambigua pero hubo {structured_call_count}"
     assert final_state.get("relevance_score") == 9.0
-    assert final_state.get("is_relevant") is True
+    assert final_state.get("synthesis_calls") == 1
     assert "excelente balance de GGAL" in final_state.get("response", "")
 
     tool_messages = [m for m in final_state["messages"] if getattr(m, "type", None) == "tool"]
@@ -424,7 +701,7 @@ def test_entrypoint_rate_limiting(monkeypatch):
                 "messages": [{"role": "user", "content": "hola", "id": f"msg-{i}"}],
             },
         )
-        assert resp.status_code != 429, f"El request {i+1} no debio ser bloqueado"
+        assert resp.status_code != 429, f"El request {i + 1} no debio ser bloqueado"
 
     # 4to request demo debe ser bloqueado con HTTP 429
     blocked_resp = client.post(
@@ -452,7 +729,7 @@ def test_entrypoint_rate_limiting(monkeypatch):
                 "messages": [{"role": "user", "content": "consulta admin", "id": f"admin-msg-{i}"}],
             },
         )
-        assert admin_resp.status_code != 429, f"El request admin {i+1} debio tener bypass de rate limit"
+        assert admin_resp.status_code != 429, f"El request admin {i + 1} debio tener bypass de rate limit"
 
 
 def test_entrypoint_input_length_limit(monkeypatch):
@@ -528,10 +805,16 @@ def test_format_tweet_doc_xml_tags():
 
     doc = Document(
         page_content="Comprando <tweet>GGAL</tweet> a full",
-        metadata={"user_handle": "trader_arg", "tweet_timestamp": "2024-03-15T12:00:00Z"},
+        metadata={
+            "evidence_id": "tweet:123",
+            "user_handle": "trader_arg",
+            "tweet_timestamp": "2024-03-15T12:00:00Z",
+            "url": "https://x.com/trader_arg/status/123",
+        },
     )
     formatted = format_tweet_doc(doc)
-    assert formatted.startswith('<tweet author="@trader_arg" date="2024-03-15">')
+    assert formatted.startswith('<tweet author="@trader_arg" date="2024-03-15" id="tweet:123"')
+    assert 'url="https://x.com/trader_arg/status/123"' in formatted
     assert formatted.endswith("</tweet>")
     # Tags internos sanitizados para prevenir escape
     assert "<tweet>GGAL</tweet>" not in formatted

@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Asegurar acceso a los módulos de lambdas/agent y lambdas/pipeline
+REPO_ROOT = Path(__file__).parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 LAMBDAS_ROOT = Path(__file__).parent.parent / "lambdas"
 if str(LAMBDAS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAMBDAS_ROOT))

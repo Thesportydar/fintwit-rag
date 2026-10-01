@@ -9,5 +9,4 @@ CRITERIOS DE EVALUACIÓN:
 
 Debes devolver:
 - score: entero de 0 a 10.
-- relevant: true si score >= 5, false en caso contrario.
 - reason: una explicación concisa (1 o 2 oraciones) de por qué los resultados son o no son relevantes.

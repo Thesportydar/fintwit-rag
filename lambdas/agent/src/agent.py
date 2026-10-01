@@ -126,6 +126,8 @@ def create_agent_app(
     services = {
         "llm": llm,
         "search_tool": search_tool,
+        "max_attempts": app_config.crag_max_attempts,
+        "relevance_threshold": app_config.crag_relevance_threshold,
         "memory_token_limit": app_config.memory_token_limit,
         "memory_keep_messages": app_config.memory_keep_messages,
     }

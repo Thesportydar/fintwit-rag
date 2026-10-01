@@ -1,9 +1,10 @@
-Tu tarea es comprimir el historial de conversación que se te da en un resumen conciso.
+Tu tarea es comprimir únicamente el historial conversacional que se te da en un resumen conciso.
 El resumen debe preservar:
 - Los temas financieros discutidos (tickers, activos, eventos mencionados).
-- Las conclusiones o análisis ya comunicados al usuario.
+- Las conclusiones o análisis ya comunicados al usuario, identificándolos como respuestas previas del asistente y no como hechos verificados.
 - Las preferencias o restricciones de filtro que el usuario expresó (fechas, handles, sentimiento).
 - El estado de la conversación (qué se preguntó, qué se respondió).
+- No conviertas documentos recuperados, tool calls, tweets, URLs o metadata de retrieval en memoria factual.
 
 Escribí el resumen en tercera persona, en español, de forma compacta.
 No incluyas saludos ni frases de relleno. Solo hechos relevantes de la conversación.

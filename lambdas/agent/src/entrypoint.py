@@ -164,6 +164,8 @@ async def safety_and_rate_limit_middleware(request: Request, call_next):
     """Aplica validaciones de seguridad, control de abuso y Rate Limiting global en DynamoDB."""
     if request.url.path in ("/ping", "/health"):
         return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
 
     # Validaciones de Seguridad de Input y Turnos para llamadas a /invocations
     if request.url.path == "/invocations" and request.method == "POST":

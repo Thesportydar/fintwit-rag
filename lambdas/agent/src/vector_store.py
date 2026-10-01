@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
+from html import escape
 from typing import Any
 
 from langchain_core.documents import Document
@@ -9,7 +11,7 @@ from langchain_core.documents.compressor import BaseDocumentCompressor
 from langchain_core.embeddings import Embeddings
 from langchain_core.tools import tool
 from qdrant_client import QdrantClient, models
-from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue, Range
+from qdrant_client.models import DatetimeRange, FieldCondition, Filter, MatchAny, MatchValue
 
 
 @dataclass(frozen=True)
@@ -28,32 +30,17 @@ class TweetFilters:
         if not isinstance(data, dict):
             raise ValueError("filters debe ser un objeto JSON")
 
-        handles = data.get("user_handles", [])
-        if isinstance(handles, str):
-            handles = [handles]
-        elif handles is None:
-            handles = []
-
-        tickers = data.get("tickers", [])
-        if isinstance(tickers, str):
-            tickers = [tickers]
-        elif tickers is None:
-            tickers = []
-
-        topics = data.get("topics", [])
-        if isinstance(topics, str):
-            topics = [topics]
-        elif topics is None:
-            topics = []
+        def as_list(value: Any) -> list[Any]:
+            return [value] if isinstance(value, str) else list(value or [])
 
         try:
             return cls(
                 start_date=data.get("start_date"),
                 end_date=data.get("end_date"),
-                user_handles=list(handles),
-                tickers=list(tickers),
+                user_handles=as_list(data.get("user_handles")),
+                tickers=as_list(data.get("tickers")),
                 sentiment=data.get("sentiment"),
-                topics=list(topics),
+                topics=as_list(data.get("topics")),
             )
         except (TypeError, ValueError) as exc:
             raise ValueError("filters tiene valores inválidos") from exc
@@ -61,20 +48,42 @@ class TweetFilters:
     def to_qdrant_filter(self) -> Filter | None:
         conditions = []
         if self.user_handles:
-            if len(self.user_handles) > 1:
-                conditions.append(FieldCondition(key="metadata.user_handle", match=MatchAny(any=self.user_handles)))
-            else:
-                conditions.append(
-                    FieldCondition(key="metadata.user_handle", match=MatchValue(value=self.user_handles[0]))
-                )
+            conditions.append(FieldCondition(key="metadata.user_handle", match=MatchAny(any=self.user_handles)))
 
-        if self.start_date or self.end_date:
-            gte_year = int(self.start_date[:4]) if self.start_date and len(self.start_date) >= 4 else None
-            lte_year = int(self.end_date[:4]) if self.end_date and len(self.end_date) >= 4 else None
-            if gte_year or lte_year:
-                conditions.append(FieldCondition(key="metadata.tweet_year", range=Range(gte=gte_year, lte=lte_year)))
+        conditions.extend(_date_range_conditions(self.start_date, self.end_date))
+
+        for key, values in (("metadata.tickers", self.tickers), ("metadata.topics", self.topics)):
+            if values:
+                conditions.append(FieldCondition(key=key, match=MatchAny(any=values)))
+
+        if self.sentiment:
+            conditions.append(FieldCondition(key="metadata.sentiment", match=MatchValue(value=self.sentiment)))
 
         return Filter(must=conditions) if conditions else None
+
+
+def _date_range_conditions(start_date: str | None, end_date: str | None) -> list[Filter]:
+    """Convierte un rango inclusivo en una condición datetime sobre la fecha del tweet."""
+    if not start_date and not end_date:
+        return []
+
+    start = date.fromisoformat(start_date) if start_date else None
+    end = date.fromisoformat(end_date) if end_date else None
+    if start and end and start > end:
+        raise ValueError("start_date no puede ser posterior a end_date")
+
+    lower_bound = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc) if start else None
+    upper_bound = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc) if end else None
+    return [
+        Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.tweet_timestamp",
+                    range=DatetimeRange(gte=lower_bound, lt=upper_bound),
+                )
+            ]
+        )
+    ]
 
 
 def hybrid_search_tweets(
@@ -119,10 +128,15 @@ def hybrid_search_tweets(
     )
 
     docs = []
-    for point in response.points:
+    for rank, point in enumerate(response.points, start=1):
         payload = point.payload or {}
         content = payload.get("content", "")
-        meta = payload.get("metadata", {})
+        meta = dict(payload.get("metadata", {}))
+        meta.setdefault("evidence_id", f"qdrant:{point.id}")
+        meta["retrieval_channel"] = "hybrid_rrf"
+        meta["retrieval_rank"] = rank
+        if isinstance(getattr(point, "score", None), int | float):
+            meta["rrf_score"] = point.score
         docs.append(Document(page_content=content, metadata=meta))
 
     return docs
@@ -130,11 +144,33 @@ def hybrid_search_tweets(
 
 def format_tweet_doc(d: Document) -> str:
     meta = d.metadata or {}
+    evidence_id = escape(str(meta.get("evidence_id", "unknown")), quote=True)
     handle = meta.get("user_handle", "unknown")
     timestamp = meta.get("tweet_timestamp", "")
     date = timestamp[:10] if timestamp else "unknown"
-    safe_content = d.page_content.replace("<tweet", "&lt;tweet").replace("</tweet>", "&lt;/tweet&gt;")
-    return f'<tweet author="@{handle}" date="{date}">{safe_content}</tweet>'
+    url = escape(str(meta.get("url", "")), quote=True)
+    safe_handle = escape(f"@{handle}", quote=True)
+    safe_date = escape(str(date), quote=True)
+    sentiment = escape(str(meta.get("sentiment", "")), quote=True)
+    safe_content = escape(d.page_content)
+    url_attribute = f' url="{url}"' if url else ""
+    sentiment_attribute = f' sentiment="{sentiment}"' if sentiment else ""
+    return (
+        f'<tweet author="{safe_handle}" date="{safe_date}" id="{evidence_id}"'
+        f"{sentiment_attribute}{url_attribute}>{safe_content}</tweet>"
+    )
+
+
+def deduplicate_documents(documents: list[Document]) -> list[Document]:
+    """Remove repeated evidence while preserving the first retrieval order."""
+    unique_by_key: dict[str, Document] = {}
+    for document in documents:
+        metadata = document.metadata or {}
+        evidence_key = str(metadata.get("evidence_id") or "")
+        if not evidence_key:
+            evidence_key = " ".join(document.page_content.lower().split())
+        unique_by_key.setdefault(evidence_key, document)
+    return list(unique_by_key.values())
 
 
 def create_search_tweets_tool(
@@ -169,22 +205,29 @@ def create_search_tweets_tool(
             sentiment: Filtrar por sentimiento específico ('bullish', 'bearish', 'neutral'). Opcional.
             topics: Lista de tópicos específicos a filtrar (ej: ['acciones_locales', 'deuda_soberana', 'fx_dolar']). Opcional.
         """
-        if start_date and not date_pattern.match(start_date):
-            return f"Error de validación: start_date '{start_date}' no tiene el formato correcto YYYY-MM-DD."
-        if end_date and not date_pattern.match(end_date):
-            return f"Error de validación: end_date '{end_date}' no tiene el formato correcto YYYY-MM-DD."
+        for field_name, field_value in (("start_date", start_date), ("end_date", end_date)):
+            if field_value and not date_pattern.match(field_value):
+                return f"Error de validacion: {field_name} '{field_value}' no tiene el formato correcto YYYY-MM-DD."
+            if field_value:
+                try:
+                    date.fromisoformat(field_value)
+                except ValueError:
+                    return f"Error de validacion: {field_name} '{field_value}' no es una fecha valida."
 
         clean_handles = [h.lstrip("@") for h in (user_handles or [])]
 
-        filters = TweetFilters(
-            start_date=start_date,
-            end_date=end_date,
-            user_handles=clean_handles,
-            tickers=tickers or [],
-            sentiment=sentiment,
-            topics=topics or [],
-        )
-        qdrant_filter = filters.to_qdrant_filter()
+        try:
+            filters = TweetFilters(
+                start_date=start_date,
+                end_date=end_date,
+                user_handles=clean_handles,
+                tickers=tickers or [],
+                sentiment=sentiment,
+                topics=topics or [],
+            )
+            qdrant_filter = filters.to_qdrant_filter()
+        except ValueError as exc:
+            return f"Error de validacion: {exc}"
 
         effective_query = query
         if tickers:
@@ -204,8 +247,11 @@ def create_search_tweets_tool(
         if not docs:
             return "No se encontraron tweets relevantes para la búsqueda solicitada."
 
+        docs = deduplicate_documents(docs)
         if compressor:
             docs = list(compressor.compress_documents(docs, effective_query))
+            for rank, doc in enumerate(docs, start=1):
+                doc.metadata["rerank_rank"] = rank
 
         return "\n\n".join(format_tweet_doc(d) for d in docs)
 
