@@ -13,6 +13,12 @@ try:
 except ImportError:
     pass
 
+# Variables de entorno por defecto para entornos donde no existe .env (CI / runners)
+os.environ.setdefault("JINA_API_KEY", "test-jina-api-key")
+os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
+os.environ.setdefault("OPENAI_API_KEY", "test-openai-api-key")
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
 # Asegurar acceso a los módulos de lambdas/agent y lambdas/pipeline
 REPO_ROOT = Path(__file__).parent.parent
 if str(REPO_ROOT) not in sys.path:
