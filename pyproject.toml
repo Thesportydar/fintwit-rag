@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn>=0.30.0",
     "ag-ui-langgraph>=0.0.40",
     "pytest>=8.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [build-system]

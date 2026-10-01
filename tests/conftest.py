@@ -5,9 +5,13 @@ import sys
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 # Asegurar acceso a los módulos de lambdas/agent y lambdas/pipeline
 REPO_ROOT = Path(__file__).parent.parent
