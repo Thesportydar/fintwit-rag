@@ -20,6 +20,21 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    # evals/requirements.txt
+    "deepeval>=1.5.0",
+    "pytest-asyncio>=0.23.0",
+    "tabulate>=0.9.0",
+    # scripts locales (tweet_etl.py, embed_tweets.py) y tests
+    "pandas",
+    "pyarrow",
+    "s3fs",
+    "tqdm",
+    "httpx",
+    "openinference-instrumentation-langchain",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
