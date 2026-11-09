@@ -12,11 +12,11 @@ on:
       environment:
         description: "GitHub environment (AWS account) to deploy to"
         required: true
-        default: dev
+        default: prod
         type: choice
         options:
-          - dev
           - prod
+          - dev
 
 permissions:
   id-token: write
@@ -25,7 +25,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'dev' }}
+    environment: ${{ inputs.environment || 'prod' }}
     defaults:
       run:
         working-directory: ./ui
