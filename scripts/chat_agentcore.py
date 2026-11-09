@@ -37,10 +37,12 @@ def load_config() -> dict[str, str]:
     """Carga configuracion desde env vars o Terraform outputs."""
     tf_outs = get_terraform_outputs()
     client_id = os.getenv("COGNITO_CLIENT_ID") or tf_outs.get("cognito_client_id", "tkiaaldrn5ktkclqof7s3gdq2")
-    runtime_arn = os.getenv("AGENTCORE_RUNTIME_ARN") or tf_outs.get(
-        "agentcore_runtime_arn",
-        "arn:aws:bedrock-agentcore:us-east-1:563147762970:runtime/fintwit_rag_dev_agent-4a06Jl5mHc",
-    )
+    runtime_arn = os.getenv("AGENTCORE_RUNTIME_ARN") or tf_outs.get("agentcore_runtime_arn")
+    if not runtime_arn:
+        raise SystemExit(
+            "No se pudo determinar el ARN del runtime: defini AGENTCORE_RUNTIME_ARN "
+            "o corre el script con acceso a 'terraform output' en terraform/main."
+        )
     email = os.getenv("COGNITO_DEMO_EMAIL") or tf_outs.get("cognito_demo_email", "demo@fintwit.com")
     password = os.getenv("COGNITO_DEMO_PASSWORD", "FinTwit2026!")
     return {
