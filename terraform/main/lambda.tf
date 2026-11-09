@@ -29,7 +29,17 @@ resource "aws_lambda_layer_version" "pipeline_layer" {
   layer_name               = "${var.project}-${var.env}-pipeline-layer"
   filename                 = "${path.module}/../../lambdas/pipeline_layer.zip"
   source_code_hash         = filebase64sha256("${path.module}/../../lambdas/pipeline_layer.zip")
-  description              = "FinTwit Ingestion Pipeline dependencies layer (PyArrow, Qdrant, OpenAI)"
+  description              = "FinTwit Ingestion Pipeline dependencies layer (Qdrant, OpenAI, Pydantic)"
+  compatible_runtimes      = ["python3.13"]
+  compatible_architectures = ["arm64"]
+}
+
+# PyArrow va en un layer aparte: junto al resto supera el limite de 50 MB de carga directa.
+resource "aws_lambda_layer_version" "pipeline_arrow_layer" {
+  layer_name               = "${var.project}-${var.env}-pipeline-arrow-layer"
+  filename                 = "${path.module}/../../lambdas/pipeline_layer_arrow.zip"
+  source_code_hash         = filebase64sha256("${path.module}/../../lambdas/pipeline_layer_arrow.zip")
+  description              = "FinTwit Ingestion Pipeline PyArrow layer"
   compatible_runtimes      = ["python3.13"]
   compatible_architectures = ["arm64"]
 }
@@ -47,7 +57,8 @@ resource "aws_lambda_function" "ingest" {
   memory_size      = 512
 
   layers = [
-    aws_lambda_layer_version.pipeline_layer.arn
+    aws_lambda_layer_version.pipeline_layer.arn,
+    aws_lambda_layer_version.pipeline_arrow_layer.arn
   ]
 
   environment {

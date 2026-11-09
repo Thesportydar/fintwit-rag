@@ -71,9 +71,9 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          artifact = Path("lambdas/pipeline_layer.zip")
-          with ZipFile(artifact, "w"):
-              pass
+          for name in ("pipeline_layer.zip", "pipeline_layer_arrow.zip"):
+              with ZipFile(Path("lambdas") / name, "w"):
+                  pass
           PY
 
       - name: Validate mutable layer

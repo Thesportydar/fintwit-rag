@@ -96,7 +96,7 @@ def hybrid_search_tweets(
 ) -> list[Document]:
     """
     Ejecuta búsqueda híbrida nativa en Qdrant combinando:
-    - Dense Vectors (Jina Embeddings) usando named vector 'dense'
+    - Dense Vectors (Jina Embeddings) usando el vector denso por defecto de la coleccion
     - Sparse BM25 Vectors (Server-side inference con 'Qdrant/bm25') usando 'bm25'
     - Fusión nativa con Reciprocal Rank Fusion (RRF).
     """

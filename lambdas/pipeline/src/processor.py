@@ -129,7 +129,7 @@ def ensure_qdrant_collection(client: QdrantClient, collection_name: str, vector_
         logger.info(f"Creando colección híbrida '{collection_name}' en Qdrant...")
         client.create_collection(
             collection_name=collection_name,
-            vectors_config={"dense": VectorParams(size=vector_size, distance=Distance.COSINE)},
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             sparse_vectors_config={"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)},
         )
 
@@ -152,23 +152,27 @@ def ensure_qdrant_collection(client: QdrantClient, collection_name: str, vector_
         raise ValueError(f"El índice Qdrant {TWEET_TIMESTAMP_FIELD} debe ser datetime, pero es {data_type!r}")
 
 
+def _to_utc_datetime(value) -> datetime | None:
+    """Normaliza un timestamp (str ISO o datetime) a datetime UTC; los naive se asumen UTC."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def records_to_parquet_bytes(records: list[dict]) -> bytes:
-    import pandas as pd
+    timestamp_fields = ("tweet_timestamp", "crawl_timestamp")
+    rows = []
+    for record in records:
+        row = {name: record.get(name) for name in ENRICHED_PARQUET_SCHEMA.names}
+        for field_name in timestamp_fields:
+            row[field_name] = _to_utc_datetime(row[field_name])
+        rows.append(row)
 
-    df = pd.DataFrame(records)
-    for field_name in ENRICHED_PARQUET_SCHEMA.names:
-        if field_name not in df:
-            df[field_name] = None
-    for col in ("tweet_timestamp", "crawl_timestamp"):
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], utc=True)
-
-    int_cols = ("crawl_year", "crawl_month", "crawl_day", "tweet_year", "tweet_month", "tweet_day")
-    for col in int_cols:
-        if col in df.columns:
-            df[col] = df[col].astype("Int32")
-
-    table = pa.Table.from_pandas(df, schema=ENRICHED_PARQUET_SCHEMA, preserve_index=False)
+    table = pa.Table.from_pylist(rows, schema=ENRICHED_PARQUET_SCHEMA)
     buf = BytesIO()
     pq.write_table(table, buf, compression="snappy")
     return buf.getvalue()
@@ -278,7 +282,8 @@ def process_tweet_records(
         point = PointStruct(
             id=point_id,
             vector={
-                "dense": embeddings[idx],
+                # Vector denso por defecto (sin nombre), igual que la coleccion y la busqueda del agente.
+                "": embeddings[idx],
                 "bm25": models.Document(
                     text=rec["content"],
                     model="Qdrant/bm25",
