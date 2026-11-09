@@ -11,6 +11,14 @@ on:
       - ".github/workflows/deploy-agentcore.yml"
   workflow_dispatch:
     inputs:
+      environment:
+        description: "GitHub environment (AWS account) to deploy to"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
       image_tag:
         description: "Immutable ECR tag; defaults to the commit SHA"
         required: false
@@ -24,6 +32,7 @@ jobs:
   deploy:
     name: Build and deploy AgentCore
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_REPOSITORY: ${{ vars.AGENTCORE_ECR_REPOSITORY }}

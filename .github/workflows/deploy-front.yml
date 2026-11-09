@@ -8,6 +8,15 @@ on:
       - 'ui/**'
       - '.github/workflows/deploy-front.yml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub environment (AWS account) to deploy to"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
 
 permissions:
   id-token: write
@@ -16,6 +25,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
     defaults:
       run:
         working-directory: ./ui
