@@ -56,3 +56,7 @@ ui/yarn-error.log*
 ui/pnpm-debug.log*
 frontend/
 assistant-ui/
+
+# Terraform prod (state backend config y data dir aislado)
+backend.prod.conf
+.terraform-prod/

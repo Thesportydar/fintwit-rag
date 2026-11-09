@@ -8,7 +8,7 @@ set -euo pipefail
 PROFILE="${1:-dev-admin}"
 REGION="${AWS_REGION:-us-east-1}"
 PROJECT="fintwit-rag"
-ENV="dev"
+ENV="${ENV:-dev}"
 IMAGE_TAG="${2:-latest}"
 
 echo "==> Resolving AWS Account ID..."
