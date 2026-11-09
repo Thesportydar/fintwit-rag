@@ -55,7 +55,7 @@ def load_config() -> dict[str, str]:
 
 def get_jwt_token(cfg: dict[str, str]) -> str:
     print("[AUTH] Autenticando contra Amazon Cognito...", end="", flush=True)
-    session = boto3.Session(profile_name="dev-admin", region_name=REGION)
+    session = boto3.Session(profile_name=os.getenv("AWS_PROFILE", "prod-admin"), region_name=REGION)
     cognito = session.client("cognito-idp")
     resp = cognito.initiate_auth(
         ClientId=cfg["client_id"],

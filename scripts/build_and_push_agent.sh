@@ -5,10 +5,10 @@ set -euo pipefail
 # Build and Push FinTwit Agent Container Image to AWS ECR (ARM64)
 # ==============================================================================
 
-PROFILE="${1:-dev-admin}"
+PROFILE="${1:-prod-admin}"
 REGION="${AWS_REGION:-us-east-1}"
 PROJECT="fintwit-rag"
-ENV="${ENV:-dev}"
+ENV="${ENV:-prod}"
 IMAGE_TAG="${2:-latest}"
 
 echo "==> Resolving AWS Account ID..."
