@@ -557,7 +557,7 @@ const ClaudeChainOfThought: FC = () => {
           <ChevronRightIcon className="shrink-0" height={16} width={16} />
         )}
         <Sparkles className="h-4 w-4 shrink-0" />
-        <span className="font-semibold text-xs tracking-wider uppercase">Proceso de Análisis (COT)</span>
+        <span className="font-semibold text-xs tracking-wider uppercase">Búsqueda y herramientas</span>
       </button>
 
       {isExpanded && (

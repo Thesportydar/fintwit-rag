@@ -1,6 +1,6 @@
 "use client";
 
-import type { AnchorHTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 
 const EVIDENCE_TAG = /\[evidence:tweet:(\d+)\]/g;
@@ -50,11 +50,20 @@ function MarkdownLink({ href, children, ...props }: AnchorHTMLAttributes<HTMLAnc
   );
 }
 
+/** La nota legal final ("Nota: ...") se muestra en cursiva y gris, como pie de la respuesta. */
+function MarkdownParagraph({ children }: { children?: ReactNode }) {
+  const first = Array.isArray(children) ? children[0] : children;
+  if (typeof first === "string" && first.trimStart().startsWith("Nota:")) {
+    return <p className="mt-3 text-xs italic text-zinc-500">{children}</p>;
+  }
+  return <p>{children}</p>;
+}
+
 export function MarkdownText() {
   return (
     <MarkdownTextPrimitive
       preprocess={linkifyEvidence}
-      components={{ a: MarkdownLink }}
+      components={{ a: MarkdownLink, p: MarkdownParagraph }}
       className="prose prose-invert prose-p:my-0 prose-pre:my-3 prose-code:text-[0.9em] max-w-none"
     />
   );
