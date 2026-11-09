@@ -16,7 +16,7 @@ def get_llm(
         from langchain_openai import ChatOpenAI
 
         model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-        is_reasoning_model = any(prefix in model_name for prefix in ("gpt-5", "o1", "o3"))
+        is_reasoning_model = any(prefix in model_name for prefix in ("gpt-5", "gpt-6", "o1", "o3"))
 
         kwargs: dict = {
             "model": model_name,
