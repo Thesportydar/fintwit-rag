@@ -384,6 +384,9 @@ export function Claude({
               </div>
             </div>
           </ComposerPrimitive.Root>
+          <p className="mx-auto mt-2 w-full max-w-3xl px-2 text-center font-sans text-[11px] italic text-zinc-500">
+            FinTwit RAG analiza opiniones públicas en X con fines informativos y educativos. No constituye asesoramiento financiero ni recomendación de inversión.
+          </p>
         </ThreadPrimitive.Root>
       </div>
     </div>
@@ -441,11 +444,6 @@ const ChatMessage = () => {
                   <ThumbsDown height={14} width={14} />
                 </ActionBarPrimitive.FeedbackNegative>
               </div>
-              <AuiIf condition={(state) => state.message.isLast}>
-                <p className="mt-2 w-full text-right text-[10px] font-sans text-[#8a8985] opacity-80 dark:text-[#9a9893] sm:text-[11px]">
-                  FinTwit RAG es una herramienta de análisis del sentimiento financiero en X (Twitter). No constituye asesoramiento financiero ni recomendación de inversión.
-                </p>
-              </AuiIf>
             </ActionBarPrimitive.Root>
           </AuiIf>
         </div>
