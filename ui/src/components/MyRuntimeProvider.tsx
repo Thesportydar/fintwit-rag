@@ -17,11 +17,24 @@ import {
   type ThreadHistoryAdapter,
   type ThreadMessage,
 } from "@assistant-ui/react";
-import { HttpAgent } from "@ag-ui/client";
+import { HttpAgent, type BaseEvent, type RunAgentInput } from "@ag-ui/client";
+import { filter, type Observable } from "rxjs";
 import { useAgUiRuntime } from "@assistant-ui/react-ag-ui";
 import { getCognitoAccessToken } from "../lib/cognito";
 
 const STORAGE_KEY = "fintwit_agui_threads";
+
+/**
+ * El backend (ag_ui_langgraph) emite un MESSAGES_SNAPSHOT al final del run con los
+ * mismos mensajes que ya llegaron por streaming. El runtime de assistant-ui no
+ * reconcilia el mensaje activo con el snapshot y termina mostrando el texto dos
+ * veces (streaming + snapshot). El stream ya es completo, asi que se descarta.
+ */
+class StreamOnlyHttpAgent extends HttpAgent {
+  run(input: RunAgentInput): Observable<BaseEvent> {
+    return super.run(input).pipe(filter((event) => event.type !== "MESSAGES_SNAPSHOT"));
+  }
+}
 
 export interface FilterSettings {
   startDate: string;
@@ -314,7 +327,7 @@ function SingleThreadRuntime({
       };
     };
 
-    return new HttpAgent({
+    return new StreamOnlyHttpAgent({
       url: agentUrl,
       threadId,
       headers: {
