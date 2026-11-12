@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pyarrow.parquet as pq
 import requests
+from pipeline.src.config import PipelineConfig
 from pipeline.src.enricher import (
     GeminiTweetEnricher,
     TweetEnricher,
@@ -14,6 +15,7 @@ from pipeline.src.processor import (
     build_evidence_id,
     ensure_qdrant_collection,
     parse_s3_key,
+    process_tweet_records,
     records_to_parquet_bytes,
 )
 
@@ -229,3 +231,66 @@ def test_gemini_enricher_falls_back_to_unclassified_on_request_error(monkeypatch
 
     assert results["t1"].enrichment_status == "unclassified"
     assert results["t1"].tickers == []
+
+
+def test_process_tweet_records_enriches_batches_in_parallel_and_keeps_order():
+    import threading
+    import time
+    from datetime import datetime, timezone
+
+    from pipeline.src.models import TweetEnrichment
+
+    threads = set()
+
+    class SlowEnricher:
+        def enrich_batch(self, tweets):
+            threads.add(threading.get_ident())
+            time.sleep(0.05)
+            return {
+                str(t["tweet_id"]): TweetEnrichment(
+                    tweet_id=str(t["tweet_id"]),
+                    tickers=[],
+                    sentiment="neutral",
+                    topics=[],
+                    is_financial_insight=False,
+                    enrichment_status="classified",
+                    enrichment_version="test",
+                )
+                for t in tweets
+            }
+
+    embedder = MagicMock()
+    embedder.embed_texts.side_effect = lambda texts, task: [[0.0] * 3 for _ in texts]
+    qdrant = MagicMock()
+    qdrant.get_collection.return_value.payload_schema = {
+        TWEET_TIMESTAMP_FIELD: MagicMock(data_type="datetime"),
+    }
+    raw = [
+        {"url": f"https://x.com/u/status/{1000 + i}", "content": f"tweet {i}", "date": "2026-11-06T12:00:00Z"}
+        for i in range(10)
+    ]
+    crawl_meta = {
+        "crawl_timestamp": datetime(2026, 11, 6, tzinfo=timezone.utc),
+        "crawl_year": 2026,
+        "crawl_month": 11,
+        "crawl_day": 6,
+    }
+    config = PipelineConfig(enrichment_batch_size=2, enrichment_concurrency=4)
+
+    stats = process_tweet_records(
+        raw_tweets=raw,
+        crawl_meta=crawl_meta,
+        enricher=SlowEnricher(),
+        embedder=embedder,
+        qdrant_client=qdrant,
+        config=config,
+        s3_client=None,
+        write_parquet=False,
+    )
+
+    assert stats["processed"] == 10
+    assert len(threads) > 1
+    embedded_texts = embedder.embed_texts.call_args.args[0]
+    assert embedded_texts == [f"tweet {i}" for i in range(10)]
+    points = qdrant.upsert.call_args.kwargs["points"]
+    assert [p.id for p in points] == [1000 + i for i in range(10)]

@@ -20,6 +20,7 @@ class PipelineConfig:
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash-lite"
     enrichment_batch_size: int = 15
+    enrichment_concurrency: int = 4
     aws_region: str = "us-east-1"
 
     @classmethod
@@ -39,5 +40,6 @@ class PipelineConfig:
             gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
             gemini_model=os.environ.get("GEMINI_MODEL", cls.gemini_model),
             enrichment_batch_size=int(os.environ.get("ENRICHMENT_BATCH_SIZE", cls.enrichment_batch_size)),
+            enrichment_concurrency=int(os.environ.get("ENRICHMENT_CONCURRENCY", cls.enrichment_concurrency)),
             aws_region=os.environ.get("AWS_REGION", cls.aws_region),
         )

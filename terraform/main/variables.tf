@@ -275,3 +275,9 @@ variable "budget_subscriber_emails" {
   type        = list(string)
   default     = ["ipaladinobravo@gmail.com"]
 }
+
+variable "ingest_enabled" {
+  description = "Enables the EventBridge rule that triggers the ingestion pipeline (false pauses ingestion)"
+  type        = bool
+  default     = true
+}

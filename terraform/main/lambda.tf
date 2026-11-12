@@ -53,7 +53,7 @@ resource "aws_lambda_function" "ingest" {
   source_code_hash = data.archive_file.pipeline_package.output_base64sha256
   runtime          = "python3.13"
   architectures    = ["arm64"]
-  timeout          = 180
+  timeout          = 300
   memory_size      = 512
 
   layers = [
@@ -85,6 +85,7 @@ resource "aws_cloudwatch_log_group" "lambda_ingest_log_group" {
 resource "aws_cloudwatch_event_rule" "tweets_uploaded" {
   name        = "${var.project}-${var.env}-tweets-uploaded"
   description = "Dispara el pipeline de ingesta y enriquecimiento cuando el scraper sube tweets"
+  state       = var.ingest_enabled ? "ENABLED" : "DISABLED"
 
   event_pattern = jsonencode({
     source      = ["twitter.scraper"]

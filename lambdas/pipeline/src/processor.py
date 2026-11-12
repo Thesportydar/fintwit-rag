@@ -5,6 +5,7 @@ import logging
 import math
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
@@ -209,10 +210,14 @@ def process_tweet_records(
     num_batches = math.ceil(total_records / batch_size)
     enriched_records = []
 
-    for b in range(num_batches):
-        batch = parsed_records[b * batch_size : (b + 1) * batch_size]
-        enrichment_map = enricher.enrich_batch(batch)
+    batches = [parsed_records[b * batch_size : (b + 1) * batch_size] for b in range(num_batches)]
+    # Los batches son independientes y la latencia es de red (LLM): se enriquecen en paralelo.
+    # map() conserva el orden, asi que el resultado es identico al secuencial.
+    workers = max(1, min(config.enrichment_concurrency, num_batches))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        enrichment_maps = list(pool.map(enricher.enrich_batch, batches))
 
+    for batch, enrichment_map in zip(batches, enrichment_maps, strict=True):
         for rec in batch:
             t_id = str(rec["tweet_id"] or "")
             enr: TweetEnrichment = enrichment_map.get(
